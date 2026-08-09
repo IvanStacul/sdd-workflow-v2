@@ -1,4 +1,4 @@
-# SDD V2 — WorkUnit Model v0.1
+# SDD V2 — WorkUnit Model v0.2
 
 > Estado: borrador experimental.  
 > Objetivo: definir una unidad de ejecución pequeña, cohesiva y recuperable sin convertir cada bloque en un mini-change ni reproducir la burocracia de SDD V1.
@@ -45,7 +45,55 @@ WorkUnit
 
 Solo agrega lo necesario para ejecutar ese bloque.
 
-### W3 — El tamaño se limita por complejidad cognitiva, no por un número fijo
+### W3 — Materialización lazy
+
+Un WorkUnit explícito se crea **cerca de su ejecución**, no como planificación exhaustiva del futuro.
+
+No construir todos los WorkUnits posibles de un Change por adelantado. El futuro lejano permanece como alcance conocido, frentes candidatos u open questions hasta que haga falta convertir una parte en trabajo ejecutable.
+
+### W4 — Stop rule: ejecutar cuando exista una frontera segura
+
+La planificación debe detenerse tan pronto exista uno o pocos WorkUnits suficientemente claros para ejecutar con seguridad.
+
+```text
+entender -> encontrar slice ejecutable -> STOP PLANNING -> ejecutar -> verificar -> reevaluar
+```
+
+El DAG de WorkUnits es emergente: se extiende a medida que el trabajo real descubre dependencias, no se exige como blueprint completo del Change.
+
+### W5 — Runtime minimalista
+
+El registro operativo de un WorkUnit debe contener solo lo necesario para actuar y cerrar el bloque. Por defecto:
+
+- objetivo;
+- dependencias reales, si existen;
+- contexto diferencial imprescindible;
+- criterio de finalización.
+
+Campos como riesgos locales, `write_scope`, pasos o evidencia esperada aparecen solo cuando cambian decisiones reales. No se rellenan preventivamente.
+
+### W6 — La descomposición debe pagarse sola
+
+Dividir trabajo solo cuando el costo de descomponer es menor que el riesgo que evita: pérdida de contexto, coordinación, bloqueo, paralelismo, recuperación o verificación.
+
+Si un slice puede ejecutarse directamente con seguridad, no crear estructura adicional para describirlo.
+
+### W7 — El HOW local pertenece al executor
+
+El WorkUnit define el resultado observable, no una receta detallada de implementación.
+
+El agente puede elegir libremente el HOW local siguiendo código existente, contratos del proyecto y políticas activas. Solo debe externalizar el HOW cuando:
+
+- introduce una decisión material;
+- afecta contratos compartidos;
+- cambia el alcance;
+- necesita coordinación con otro WorkUnit/agente;
+- debe sobrevivir a una interrupción;
+- el usuario pidió revisar el enfoque antes de implementarlo.
+
+Esto evita el patrón V1 de describir exhaustivamente lo que se hará y luego repetir el mismo razonamiento durante `apply`.
+
+### W8 — El tamaño se limita por complejidad cognitiva, no por un número fijo
 
 No se establece todavía un máximo universal de tareas.
 
@@ -59,13 +107,13 @@ Un WorkUnit debe dividirse cuando el agente ya no puede mantener con claridad:
 
 El tamaño óptimo se validará empíricamente con distintos modelos.
 
-### W4 — Verificación local antes de avanzar
+### W9 — Verificación local antes de avanzar
 
 Un WorkUnit no se considera terminado porque el edit fue intentado.
 
 Debe existir evidencia proporcional al bloque: readback, lint, typecheck, test puntual, integración u otra comprobación adecuada.
 
-### W5 — Las incidencias se conservan por utilidad
+### W10 — Las incidencias se conservan por utilidad
 
 No se guarda output completo ni cada error temporal.
 
@@ -77,7 +125,7 @@ Se conserva información cuando sirve para:
 - promover conocimiento reusable;
 - detectar que el Change debe cambiar.
 
-### W6 — Paralelismo solo con independencia positiva
+### W11 — Paralelismo solo con independencia positiva
 
 No asumir que dos WorkUnits son paralelizables porque no existe una dependencia declarada.
 
@@ -95,7 +143,7 @@ Si la independencia es incierta, ejecutar secuencialmente.
 
 Un WorkUnit pertenece a un Change y tiene identidad estable dentro de él.
 
-Propuesta v0.1:
+Propuesta v0.2:
 
 ```text
 CHG-20260807-03 / WU-01
@@ -185,9 +233,11 @@ context:
 
 Si esa restricción aplica a varios WorkUnits, debe promoverse al Change o al conocimiento de proyecto en lugar de duplicarse.
 
-## 6. Plan interno del bloque
+## 6. Ejecución interna del bloque
 
-Un WorkUnit puede contener varios pasos atómicos, pero esos pasos no son nuevas entidades por defecto.
+Un WorkUnit puede requerir varios pasos atómicos. Esos pasos son **ephemerales por defecto**: el executor puede razonarlos y ejecutarlos sin convertirlos en un plan persistente ni narrarlos al usuario.
+
+Solo se persisten cuando aportan continuidad, coordinación o recuperación real.
 
 Ejemplo:
 
@@ -323,7 +373,7 @@ El Memory Contract definirá después cómo persiste cada destino.
 
 ## 10. Dependencias
 
-Las dependencias entre WorkUnits forman un DAG dentro del Change cuando el trabajo lo requiere.
+Las dependencias materializadas entre WorkUnits forman un DAG **parcial y emergente** dentro del Change cuando el trabajo lo requiere. No se exige construir el grafo completo antes de implementar.
 
 Ejemplo:
 
@@ -404,7 +454,32 @@ No renumerar WorkUnits existentes. La cronología debe conservarse.
 
 Todavía queda por decidir cuánto de esta replanificación necesita historial persistente y cuánto basta con un snapshot actual + eventos relevantes.
 
-## 13. Relación con direct / compact / full
+## 13. Execution frontier
+
+El executor trabaja sobre una frontera pequeña de WorkUnits próximos a ejecución.
+
+```text
+trabajo futuro conocido
+        |
+--------+--------- execution frontier
+      WU-A   WU-B
+        \   /
+        ejecutar
+           |
+        verificar
+           |
+        reevaluar
+```
+
+No cargar ni razonar sobre todos los WorkUnits históricos o potenciales del Change. Recuperar solo:
+
+- unidades listas o inmediatamente bloqueantes;
+- dependencias necesarias;
+- contexto del Change relevante al slice actual.
+
+Una frontera de 1 unidad es perfectamente válida. Crear varias juntas principalmente cuando existe paralelismo real o una dependencia inmediata que conviene explicitar.
+
+## 14. Relación con direct / compact / full
 
 El WorkUnit no obliga a crear un Change persistente para todo.
 
@@ -423,7 +498,7 @@ full
 
 El router definirá cuándo materializar cada nivel.
 
-## 14. Relación con autonomía humana
+## 15. Relación con autonomía humana
 
 Un WorkUnit no debe detenerse porque terminó un paso artificial.
 
@@ -439,7 +514,7 @@ Ejemplos de pausa válida:
 
 Errores técnicos rutinarios y recuperables deberían resolverse dentro del WorkUnit sin pedir aprobación para cada retry.
 
-## 15. Evidencia de cierre
+## 16. Evidencia de cierre
 
 Cada WorkUnit debe poder demostrar su resultado antes de alimentar bloques dependientes.
 
@@ -458,7 +533,7 @@ No todos son obligatorios. La evidencia requerida depende del riesgo y del objet
 
 La evidencia detallada puede almacenarse separadamente; el WorkUnit solo necesita poder referenciar qué prueba sustenta su cierre.
 
-## 16. Qué NO es un WorkUnit
+## 17. Qué NO es un WorkUnit
 
 No es:
 
@@ -470,12 +545,15 @@ No es:
 - un subchange;
 - un contenedor donde copiar toda la información del Change.
 
-## 17. Invariantes vs experimental
+## 18. Invariantes vs experimental
 
 ### Invariantes actuales
 
 - Change y WorkUnit son conceptos distintos.
 - un WorkUnit tiene un único objetivo verificable;
+- se materializa cerca de su ejecución, no como planificación exhaustiva;
+- la planificación se detiene al encontrar una frontera ejecutable segura;
+- el HOW local queda en manos del executor salvo decisión material;
 - hereda contexto y evita duplicarlo;
 - errores locales no crean automáticamente Changes;
 - descubrimientos reusables pueden promoverse;
@@ -487,6 +565,7 @@ No es:
 
 - tamaño óptimo;
 - cantidad recomendada de pasos;
+- tamaño recomendado de la execution frontier;
 - lifecycle/state explícito del WorkUnit;
 - forma exacta de `Progress`;
 - `write_scope` como campo persistente o derivado;
@@ -495,7 +574,7 @@ No es:
 - heurística exacta de paralelismo;
 - promoción automática vs sugerida de conocimiento reusable.
 
-## 18. Preguntas que debemos validar usando V2
+## 19. Preguntas que debemos validar usando V2
 
 1. ¿Cuándo un WorkUnit empieza a ser demasiado grande para modelos de distinta capacidad?
 2. ¿Qué mínimo contexto heredado permite retomar un bloque sin releer el Change completo?
@@ -506,7 +585,7 @@ No es:
 7. ¿Cómo se recupera un WorkUnit parcialmente ejecutado después de pérdida de contexto?
 8. ¿Cuándo un retry debe seguir siendo el mismo WorkUnit y cuándo corresponde replanificar?
 
-## 19. Siguiente paso
+## 20. Siguiente paso
 
 Con `Change Model` + `WorkUnit Model` ya existe suficiente dominio para diseñar un **Memory Contract v0 mínimo**.
 

@@ -122,3 +122,14 @@ Hasta integrar Engram, un nuevo chat debería leer primero:
 No cargar automáticamente toda la investigación ni toda la V1.
 
 Cuando Engram quede operativo, este archivo podrá convertirse en snapshot/export y dejar de ser la memoria operativa principal.
+
+## Update — Execution Contract v0.1
+
+Nueva decisión de diseño:
+
+- Skills/filosofías como minimalidad, comunicación compacta, TDD o seguridad deben actuar como policies transversales, no fases.
+- El core no depende de una skill externa concreta: consume contratos compactos derivados de policies.
+- Se adopta `Minimum Sufficient Change`: mínima solución correcta, sin abstracción/dependencia/refactor especulativo.
+- Se adopta `Action First`: no explicar un HOW detallado antes de implementar cuando el slice ya es seguro; comunicar decisiones materiales, bloqueos y resultado/evidencia.
+- El HOW local queda bajo autonomía del executor; solo se persiste si afecta coordinación, arquitectura, scope, recuperación o decisión humana.
+- WorkUnit Model evoluciona a v0.2 con materialización lazy, execution frontier y DAG emergente.
