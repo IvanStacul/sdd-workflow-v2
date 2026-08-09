@@ -69,8 +69,10 @@ Memory Store
 - posibilidad de escalar ruta durante ejecución;
 - Engram como backend default;
 - records lógicos iniciales: `ChangeBrief`, `Decision`, `Progress`, `Evidence`, `SessionSummary`;
+- `Change` y unidad de ejecución se separan: se explora `WorkUnit` para bloques pequeños, verificables y potencialmente paralelizables;
+- ciclo de vida mínimo candidato: `open | closed`, con motivo de cierre separado;
+- identidad preferida: `CHG-YYYYMMDD-NN` estable + slug/título separado;
 - Markdown generado solo por pedido, milestone, audit/handoff u otra policy;
-- nomenclatura candidata de change: `CHG-YYYYMMDD-NNN-slug`.
 
 ## Referencias investigadas
 
@@ -85,35 +87,30 @@ Memory Store
 
 Estamos comenzando el diseño formal de V2.
 
-Primer artefacto de diseño:
+Artefactos de diseño actuales:
 
 ```text
 docs/change-model.md
+docs/workunit-model.md
 ```
 
-Define:
+`change-model.md` define identidad, cronología, contenido adaptativo, relaciones, split/spawn, scope drift y roadmap como proyección.
 
-- identidad y cronología de changes;
-- contenido adaptativo;
-- relaciones;
-- split vs spawn;
-- scope drift;
-- records asociados;
-- roadmap como proyección;
-- independencia del backend.
+`workunit-model.md` separa la intención del Change de la unidad real de ejecución y define bloques pequeños, contexto heredado, incidencias útiles, promoción de descubrimientos, dependencias, paralelismo y replanificación.
 
 ## Siguiente paso
 
-Diseñar `Memory Contract v0`:
+Diseñar el `Memory Contract v0` mínimo usando solamente necesidades comprobadas por `Change Model` + `WorkUnit Model`:
 
-- operaciones mínimas;
-- recuperación;
-- mutable vs append-only;
-- queries necesarias;
-- mapeo a Engram;
-- garantías de portabilidad.
+- persistencia y recuperación selectiva;
+- relaciones;
+- decisiones/evidencia;
+- promoción de conocimiento reusable;
+- timeline/roadmap como consultas;
+- backend Engram detrás de adapter;
+- export sin dependencia del schema interno de Engram.
 
-El router se diseña después.
+El router se diseña después sobre ambos modelos.
 
 ## Regla de continuidad
 

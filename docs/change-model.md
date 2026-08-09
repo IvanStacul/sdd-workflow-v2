@@ -1,6 +1,6 @@
-# SDD V2 — Change Model v0
+# SDD V2 — Change Model v0.1
 
-> Estado: borrador de diseño.  
+> Estado: borrador experimental. Se fijan solo invariantes ya acordadas; los detalles operativos se validarán usando la V2.  
 > Objetivo: definir cómo SDD V2 representa un cambio y la evolución del proyecto sin depender de Engram, Markdown ni otro backend particular.
 
 ## 1. Por qué existe
@@ -69,37 +69,42 @@ Un `Change` es una unidad de intención suficientemente independiente como para 
 
 ### Identidad
 
-Nomenclatura candidata:
+La identidad canónica se separa del nombre legible. Propuesta preferida:
 
 ```text
-CHG-YYYYMMDD-NNN-slug
+ID estable:   CHG-YYYYMMDD-NN
+slug/título:  cash-transfers
+export/view:  CHG-YYYYMMDD-NN-cash-transfers
 ```
 
 Ejemplo:
 
 ```text
-CHG-20260807-003-cash-transfers
+id:    CHG-20260807-03
+slug:  cash-transfers
+title: Transferencias entre cajas
 ```
 
-La fecha y secuencia representan **orden de creación**, no prioridad.
+La fecha y secuencia representan **orden de creación**, no prioridad. El `slug` puede evolucionar sin romper referencias al change. La asignación de secuencia deberá ser responsabilidad del store/runtime para evitar colisiones cuando haya concurrencia.
 
-> La nomenclatura todavía no está cerrada.
+> Esta es la opción preferida de v0.1, pero se validará en uso antes de declararla definitiva.
 
-### Estado
+### Ciclo de vida mínimo
 
-Estados candidatos:
+La V2 evita una máquina de estados rica hasta tener evidencia de que hace falta. El núcleo usa:
 
 ```text
-proposed
-active
-blocked
-completed
-cancelled
-superseded
-split
+open
+closed
 ```
 
-Todavía no definimos una máquina de estados estricta.
+El motivo de cierre es información separada:
+
+```text
+completed | cancelled | superseded | split
+```
+
+`blocked` no es un estado de ciclo de vida: es una condición derivable de blockers/preguntas/dependencias abiertas. Del mismo modo, las antiguas fases de V1 no se convierten en estados del Change.
 
 ### Contenido lógico
 
@@ -132,7 +137,7 @@ Es un modelo conceptual. No obliga a guardar YAML ni a completar arrays vacíos.
 
 - identidad;
 - intención;
-- estado;
+- ciclo de vida (`open | closed`);
 - cronología básica.
 
 ### Cuando aporta
@@ -213,7 +218,62 @@ La conversación no redefine automáticamente el scope.
 
 Si el usuario pide una tarea independiente durante otro change, esa tarea puede ejecutarse aparte sin contaminar el change activo.
 
-## 8. Registros lógicos asociados
+## 8. Change != unidad de ejecución
+
+Un `Change` conserva la intención y evolución funcional. No debe convertirse en un paquete de 20+ tareas que el modelo tenga que sostener simultáneamente en contexto.
+
+La V2 introduce como hipótesis fuerte una unidad más pequeña de ejecución: `WorkUnit` (nombre provisional).
+
+```text
+Change
+  -> WorkUnit A
+  -> WorkUnit B
+  -> WorkUnit C
+```
+
+Un WorkUnit debe ser cohesivo, razonable para una sola ventana de trabajo y verificable de forma independiente. La cantidad máxima exacta de tareas **no se fija todavía**; se validará empíricamente y podrá depender de complejidad/capacidad del modelo.
+
+Propiedades candidatas:
+
+```yaml
+work_unit:
+  id: WU-...
+  change_id: CHG-...
+  objective: ...
+  tasks: []
+  depends_on: []
+  conflicts_with: []
+  execution_notes: []
+  evidence: []
+```
+
+### Errores y descubrimientos durante apply
+
+Un fallo de ejecución no crea automáticamente otro Change. Ejemplos: comando pensado para Linux ejecutado desde PowerShell/CMD, herramienta ausente, path incorrecto o diferencia de shell.
+
+Regla candidata:
+
+```text
+error local/reintentable             -> queda en WorkUnit/Progress
+restricción reusable del entorno     -> promover a conocimiento de proyecto
+cambia scope o comportamiento        -> evaluar split/spawn/change
+decisión material                    -> Decision / consulta al usuario
+```
+
+Esto evita que el modelo repita errores ya descubiertos sin convertir cada incidente en burocracia permanente.
+
+### Paralelismo
+
+Los WorkUnits, no los Changes completos, son los candidatos naturales para paralelismo. Dos bloques pueden ejecutarse en paralelo cuando:
+
+- no dependen entre sí;
+- no modifican recursos fuertemente solapados;
+- pueden verificarse independientemente;
+- el runtime/agente dispone de capacidad real de delegación.
+
+El paralelismo es una optimización del executor, no una obligación del Change Model.
+
+## 9. Registros lógicos asociados
 
 No queremos trasladar literalmente `proposal.md + spec.md + design.md + tasks.md + state.md + verify.md` a seis memorias.
 
@@ -248,7 +308,7 @@ Resumen para sobrevivir pérdida de contexto:
 - preguntas abiertas;
 - siguiente paso.
 
-## 9. Eventos de evolución
+## 10. Eventos de evolución
 
 No persistimos cada acción. Solo eventos que explican cambios importantes en la historia del proyecto.
 
@@ -267,7 +327,7 @@ change_completed
 
 Todavía no está definido cuáles son realmente necesarios.
 
-## 10. Roadmap
+## 11. Roadmap
 
 El roadmap no es un documento autoritativo mantenido manualmente.
 
@@ -287,7 +347,7 @@ Por eso puede cambiar sin alterar identidad ni historia.
 Change Graph -> Roadmap View
 ```
 
-## 11. Autonomía humana
+## 12. Autonomía humana
 
 Queda fuera de este documento, pero se fija una separación conceptual:
 
@@ -299,7 +359,7 @@ Hipótesis a explorar después:
 
 > detener al usuario por decisiones materiales, no por terminar fases artificiales.
 
-## 12. Independencia del backend
+## 13. Independencia del backend
 
 El modelo debe persistirse detrás de un contrato abstracto:
 
@@ -318,7 +378,7 @@ SDD no debería depender directamente de:
 - `topic_key` como identidad de dominio;
 - tipos internos de observación.
 
-## 13. Export
+## 14. Export
 
 El export consume el modelo lógico recuperado del store:
 
@@ -333,26 +393,30 @@ Memory Store
 
 Así podemos recuperar documentos ricos con riesgos, edge cases, decisiones y evidencia **sin escribirlos obligatoriamente durante el flujo**.
 
-## 14. Preguntas abiertas
+## 15. Decisiones v0.1 y preguntas abiertas
 
-1. ¿Cuál es la nomenclatura definitiva del Change ID?
-2. ¿Qué estados necesitamos realmente?
-3. ¿Hace falta persistir prioridad?
-4. ¿Cuándo un trabajo incidental merece un Change y cuándo puede ser efímero/directo?
-5. ¿Qué registros deben ser mutables y cuáles append-only?
-6. ¿Cuánto del `ChangeBrief` vive junto y cuánto separado?
-7. ¿Qué eventos aportan valor suficiente para guardarse?
-8. ¿Qué formato tendrá el export Markdown?
+### Preferencias actuales
 
-## 15. Siguiente paso
+1. **Identidad:** `CHG-YYYYMMDD-NN` estable + `slug/title` separado. El formato de export puede combinar ambos.
+2. **Estado:** ciclo de vida mínimo `open | closed`; `blocked` es condición, y `completed/cancelled/superseded/split` son motivos de cierre.
+3. **Prioridad:** no forma parte del núcleo del Change por ahora. El roadmap puede ordenar cambios sin mutar su identidad ni exigir un número de prioridad persistente.
+4. **Trabajo incidental:** el router decide por defecto y consulta solo cuando el impacto sea material/ambiguo. Un ajuste directo puede ser efímero; si modifica scope/aceptación/arquitectura de un Change, debe quedar relacionado o incorporado explícitamente.
+5. **Append-only:** evitar múltiples logs. Mantener un único historial/event stream mínimo para evolución relevante; el resto puede ser snapshot mutable. Decisions que sean reemplazadas deben preservar la anterior mediante relación `supersedes`.
+6. **ChangeBrief:** mantener junto el núcleo (intent/scope/acceptance/edge cases/risks/open questions). Separar solo entidades históricas o de alta cardinalidad como Decisions, Evidence runs y eventos.
+7. **Eventos:** guardar solo los que explican evolución del proyecto (`created`, `split/spawn`, cambio material de scope, supersede, cierre). Los errores cotidianos de ejecución viven en WorkUnit/Progress salvo que se conviertan en conocimiento reusable o cambien el Change.
+8. **Export:** Markdown estándar es el formato canónico inicial. Una proyección Obsidian puede existir después como variante (frontmatter/wikilinks), sin contaminar el modelo base.
 
-Definir el **Memory Contract v0**:
+### Preguntas que deben validarse usando la V2
 
-- operaciones mínimas del store;
-- identidad y recuperación;
-- mutable vs append-only;
-- consultas necesarias;
-- mapeo inicial a Engram;
-- garantías para poder reemplazar Engram en el futuro.
+- ¿Cuál es el tamaño máximo/recomendado de un WorkUnit para distintos modelos y complejidades?
+- ¿Qué información mínima debe sobrevivir entre WorkUnits para que modelos menos potentes no pierdan el hilo?
+- ¿Cómo representar conocimiento reusable de entorno/herramientas sin convertirlo en otra capa documental pesada?
+- ¿Qué heurística permite paralelizar WorkUnits con seguridad y bajo conflicto?
+- ¿Cuándo vale la pena materializar un roadmap y qué criterios de orden necesita?
+- ¿Qué eventos, además del núcleo propuesto, terminan demostrando valor real durante el uso?
 
-El router se diseña después, sobre un `Change` y un mecanismo de memoria ya claros.
+## 16. Siguiente paso
+
+El **Execution/WorkUnit Model v0.1** quedó definido en `docs/workunit-model.md`. Formaliza bloques pequeños, contexto heredado, incidencias, promoción de descubrimientos, dependencias, paralelismo y replanificación sin fijar todavía heurísticas numéricas rígidas.
+
+El siguiente paso es diseñar el **Memory Contract v0** solamente con las operaciones que Change + WorkUnit realmente necesiten. El router se diseña después sobre ambos modelos, no sobre una máquina de fases.
