@@ -139,3 +139,79 @@ Nueva decisión de diseño:
 - Se adopta `Action First`: no explicar un HOW detallado antes de implementar cuando el slice ya es seguro; comunicar decisiones materiales, bloqueos y resultado/evidencia.
 - El HOW local queda bajo autonomía del executor; solo se persiste si afecta coordinación, arquitectura, scope, recuperación o decisión humana.
 - WorkUnit Model evoluciona a v0.2 con materialización lazy, execution frontier y DAG emergente.
+
+## Update — Engram Adapter Spike
+
+Spike ejecutable creado en `experiments/engram-adapter/`.
+
+Resultados:
+
+- Memory Contract pasa con backend `InMemoryStore`.
+- El mismo escenario pasa con una simulación de la API HTTP de Engram: Change canónico, WorkUnit, Decision, Evidence, knowledge y export Markdown.
+- Se preparó `npm run smoke:real` para validar contra `engram serve` real; el entorno de construcción no tenía el binario Engram instalado.
+- Fricción detectada: Engram no ofrece selectors custom para `subject/key` de SDD; el spike HTTP usa marcadores FTS deterministas como índice técnico. Esta solución es experimental, no parte del modelo.
+- El spike completo tiene 616 líneas incluyendo tests/demo/smoke; NO se considera implementación final.
+
+Decisión provisional de integración:
+
+- Hot path preferido: herramientas MCP de Engram directas desde el runtime/skills (`mem_save`, `mem_search`, `mem_get_observation`, etc.).
+- El `Memory Contract` sigue siendo nuestro contrato semántico; las instrucciones MCP son un adapter operativo del host.
+- Scripts propios quedan para export, compatibilidad, smoke tests o fallback, no como middleware obligatorio de cada WorkUnit.
+- Si Engram real no permite recuperación suficientemente determinista/eficiente, revisar el adapter o backend; no deformar Change/WorkUnit para acomodarlo.
+
+## Siguiente paso actualizado
+
+Diseñar el Router v0 como contrato pequeño y adaptativo:
+
+- `direct | compact | full` como rutas de proceso;
+- autonomía/topología separadas;
+- `compact` como opción intermedia, no full-SDD por defecto;
+- escalation durante ejecución;
+- planificación lazy hasta encontrar execution frontier;
+- ninguna fase/documento obligatorio si no reduce riesgo o ambigüedad.
+
+## Update — Router Contract v0.1
+
+Se creó `docs/router-contract.md` y un spike mínimo en `experiments/router/`.
+
+Decisiones provisionales:
+
+- rutas de proceso: `direct | compact | full`;
+- topología/autonomía separadas del route;
+- elegir siempre la ruta más liviana que permita ejecutar con seguridad;
+- `direct` no crea Change/WorkUnit durable por ceremonia;
+- `compact` es la ruta natural para continuidad, múltiples slices o decisiones durables sin necesidad de full-SDD;
+- `full` expresa necesidad de contratos más explícitos por riesgo/ambigüedad/coordinación, no una cadena fija de fases;
+- stop rule: parar planificación cuando exista execution frontier segura;
+- escalation dinámica `direct -> compact -> full` por evidencia descubierta durante ejecución;
+- approval boundary por decisión material, no por fase.
+
+El spike del router es deliberadamente pequeño (36 líneas de implementación + 22 de tests) y pasa escenarios direct/compact/full + escalation. La heurística concreta NO se considera definitiva; servirá para evaluar tareas reales y ajustar señales.
+
+## Próximo experimento
+
+Construir un **Runtime Kernel v0** mínimo que una las piezas ya diseñadas sin reintroducir fases:
+
+```text
+request
+ -> route
+ -> retrieve minimum context
+ -> create/recover Change only if route requires it
+ -> materialize current WorkUnit only if useful
+ -> inject compact policies
+ -> ACT
+ -> verify proportionally
+ -> persist only useful state/history
+ -> next frontier or close
+```
+
+Debe probarse primero sobre escenarios representativos de V1 antes de agregar más features al framework.
+
+
+## Reglas de repositorio y entregas
+
+- `experiments/` contiene spikes/pruebas de hipótesis del desarrollo de SDD V2. Pertenece al repo de desarrollo, pero NO al runtime ni a la distribución que se instala en proyectos consumidores.
+- Los experimentos deben poder eliminarse o reemplazarse sin afectar la semántica del workflow. Cuando una idea se estabiliza, solo la implementación mínima necesaria pasa al runtime/tests/docs definitivos.
+- Outputs generados por experimentos no se versionan salvo que se promuevan explícitamente a fixture/golden file.
+- Después de cada actualización de archivos, presentar un commit sugerido siguiendo Conventional Commits.
+- En cada entrega, mostrar siempre el árbol vigente del proyecto además de cualquier ZIP o bundle generado.

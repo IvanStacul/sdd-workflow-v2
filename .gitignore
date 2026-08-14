@@ -1,0 +1,5 @@
+# Experimental generated outputs
+experiments/**/output/
+
+# Node experiment dependencies
+experiments/**/node_modules/
