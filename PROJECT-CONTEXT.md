@@ -65,7 +65,8 @@ Memory Store
 
 ## Hipótesis actuales, no decisiones finales
 
-- rutas candidatas: `direct | delegated | compact | full`;
+- rutas de proceso candidatas: `direct | compact | full`;
+- topología de ejecución separada: `inline | delegated | auto`;
 - posibilidad de escalar ruta durante ejecución;
 - Engram como backend default;
 - records lógicos iniciales: `ChangeBrief`, `Decision`, `Progress`, `Evidence`, `SessionSummary`;
@@ -92,25 +93,30 @@ Artefactos de diseño actuales:
 ```text
 docs/change-model.md
 docs/workunit-model.md
+docs/execution-contract.md
+docs/memory-contract.md
 ```
 
 `change-model.md` define identidad, cronología, contenido adaptativo, relaciones, split/spawn, scope drift y roadmap como proyección.
 
-`workunit-model.md` separa la intención del Change de la unidad real de ejecución y define bloques pequeños, contexto heredado, incidencias útiles, promoción de descubrimientos, dependencias, paralelismo y replanificación.
+`workunit-model.md` separa la intención del Change de la unidad real de ejecución y define materialización lazy, execution frontier, incidencias útiles, promoción de descubrimientos, dependencias y paralelismo emergente.
+
+`execution-contract.md` fija policies compactas de mínima solución suficiente, action-first y libertad local del executor.
+
+`memory-contract.md` define cinco primitives backend-agnostic (`put`, `append`, `get`, `query`, `search`), recuperación progresiva y Engram como adapter sin delegarle la semántica SDD.
 
 ## Siguiente paso
 
-Diseñar el `Memory Contract v0` mínimo usando solamente necesidades comprobadas por `Change Model` + `WorkUnit Model`:
+Probar el `Memory Contract v0.1` contra Engram mediante un **adapter spike mínimo**, sin construir todavía todo el workflow:
 
-- persistencia y recuperación selectiva;
-- relaciones;
-- decisiones/evidencia;
-- promoción de conocimiento reusable;
-- timeline/roadmap como consultas;
-- backend Engram detrás de adapter;
-- export sin dependencia del schema interno de Engram.
+1. guardar/actualizar un Change canónico;
+2. materializar un WorkUnit lazy;
+3. append de una decisión/evidence;
+4. recuperar contexto selectivo;
+5. promover un discovery reusable;
+6. exportar esos records a Markdown con un projector nuestro.
 
-El router se diseña después sobre ambos modelos.
+El objetivo del spike es descubrir qué parte del contrato sobra o falta antes de diseñar el Router definitivo.
 
 ## Regla de continuidad
 
