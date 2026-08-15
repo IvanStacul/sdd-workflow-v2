@@ -10,11 +10,11 @@ Elegir la **ceremonia mínima suficiente** para ejecutar un request con segurida
 
 ```text
 process route:       direct | compact | full
-execution topology: inline | delegated | auto
+execution topology: inline | delegated
 human approval:      material-decisions (default) | supervised
 ```
 
-`delegated` y `auto` no son rutas de complejidad.
+`delegated` no es una ruta de complejidad. `auto` de V1 no se conserva como topología: su intención útil se expresa mediante `human approval: material-decisions`, donde el runtime continúa autónomamente hasta encontrar una decisión material o bloqueo real.
 
 ## Regla base
 
@@ -82,6 +82,17 @@ Señales fuertes:
 - múltiples equipos/agentes necesitan un contrato estable antes de ejecutar.
 
 `full` NO implica automáticamente una cadena fija `proposal -> spec -> design -> tasks`. Significa mayor explicitud del contrato; los artefactos concretos siguen siendo adaptativos.
+
+## Execution topology
+
+La topología se decide después del route y puede cambiar por frontier:
+
+- `inline`: trabajo suficientemente acotado para un único executor;
+- `delegated`: aislamiento de contexto o paralelismo real aporta valor y el host tiene capacidad disponible.
+
+Ninguna route obliga a delegar. Un `full` puede ejecutarse inline y un `compact` puede delegar WorkUnits independientes.
+
+La autonomía humana es otra dimensión. Default `material-decisions`: continuar sin approvals de fase y detenerse solo ante decisiones materiales/bloqueos. `supervised` agrega checkpoints por preferencia del usuario.
 
 ## Stop rule
 

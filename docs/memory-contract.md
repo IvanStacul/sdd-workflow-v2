@@ -1,4 +1,4 @@
-# SDD V2 — Memory Contract v0.1
+# SDD V2 — Memory Contract v0.2
 
 > Estado: borrador experimental.
 > Objetivo: definir las capacidades mínimas que SDD V2 necesita de una memoria persistente sin convertir a Engram, Markdown o SQLite en parte del modelo de dominio.
@@ -370,6 +370,14 @@ Engram MCP puede operar por stdio y es suficiente para el hot path del agente.
 
 El exporter custom puede usar un mecanismo bulk (por ejemplo export JSON) fuera del hot path. La V2 no debería exigir `engram serve` solo para ejecutar Changes.
 
+### Decisión de integración — hot path MCP directo
+
+El runtime normal no debe atravesar una librería SDD grande para cada lectura/escritura. Cuando el host expone Engram por MCP, el adapter operativo preferido son llamadas directas a `mem_search`, `mem_get_observation`, `mem_save`/`mem_update` y session tools según necesidad.
+
+El Memory Contract sigue siendo la semántica SDD. Las llamadas MCP son solo el binding del backend. Scripts propios se reservan para export, smoke tests, migración, compatibilidad o fallback.
+
+Esto evita reemplazar burocracia documental por middleware obligatorio.
+
 ## 12. Export
 
 Export no forma parte del Memory Store core.
@@ -441,7 +449,7 @@ MEMORY RULES
 - Memory backend never defines SDD semantics.
 ```
 
-## 16. Decisiones v0.1
+## 16. Decisiones v0.2
 
 Aceptadas provisionalmente:
 
@@ -453,6 +461,7 @@ Aceptadas provisionalmente:
 6. Engram `topic_key` se usa solo donde upsert es semánticamente correcto.
 7. Export Markdown queda fuera del hot path.
 8. Runtime normal no debe depender de `engram serve`.
+9. El hot path preferido usa Engram MCP directo cuando esté disponible; adapters/scripts propios no son middleware obligatorio.
 
 ## 17. Preguntas experimentales
 

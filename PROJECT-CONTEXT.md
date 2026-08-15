@@ -215,3 +215,33 @@ Debe probarse primero sobre escenarios representativos de V1 antes de agregar m�
 - Outputs generados por experimentos no se versionan salvo que se promuevan explícitamente a fixture/golden file.
 - Después de cada actualización de archivos, presentar un commit sugerido siguiendo Conventional Commits.
 - En cada entrega, mostrar siempre el árbol vigente del proyecto además de cualquier ZIP o bundle generado.
+
+## Update — Runtime Kernel v0
+
+Se creó `runtime/kernel.md` como primera pieza canónica del runtime distribuible.
+
+Principios operativos consolidados:
+
+- loop único: route -> minimum context -> execution frontier -> ACT -> verify -> persist useful context -> next/close;
+- no phase graph obligatorio;
+- WorkUnits materializados just-in-time y DAG emergente;
+- STOP PLANNING cuando existe un slice seguro/verificable;
+- Action First + Minimum Sufficient Change en el hot path;
+- persistencia selectiva; Engram MCP directo cuando esté disponible;
+- policies transversales agregan restricciones compactas, no fases;
+- paralelismo solo con independencia positiva;
+- output de ejecución centrado en resultado/evidencia, no en repetir el HOW.
+
+`runtime/kernel.md` debe mantenerse pequeño. Los documentos extensos en `docs/` justifican y exploran decisiones, pero no forman parte del contexto normal del executor.
+
+También se corrigió `workunit-model.md` a v0.2 para formalizar materialización lazy, execution frontier, DAG emergente y la regla de que la descomposición debe pagarse sola; `memory-contract.md` pasa a v0.2 e incorpora MCP directo como hot path preferido.
+
+### Refinement — topology vs autonomy
+
+Se corrigió una mezcla heredada de V1:
+
+- process route: `direct | compact | full`;
+- execution topology: `inline | delegated`;
+- human approval/autonomy: `material-decisions` (default) | `supervised`.
+
+`auto` deja de ser una dimensión propia: su intención útil queda absorbida por `material-decisions`, donde el runtime continúa entre slices seguros y solo pausa ante una decisión material o bloqueo.
