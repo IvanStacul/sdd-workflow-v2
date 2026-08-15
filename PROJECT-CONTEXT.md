@@ -245,3 +245,39 @@ Se corrigió una mezcla heredada de V1:
 - human approval/autonomy: `material-decisions` (default) | `supervised`.
 
 `auto` deja de ser una dimensión propia: su intención útil queda absorbida por `material-decisions`, donde el runtime continúa entre slices seguros y solo pausa ante una decisión material o bloqueo.
+
+## Update — Evolution + Alpha Foundation
+
+Se decidió avanzar a un V2 Alpha usable en lugar de bloquear el desarrollo con un benchmark exhaustivo previo.
+
+Nuevas piezas:
+
+- `docs/evolution-contract.md`: captura proactiva y silenciosa de workflow signals, promoción basada en evidencia, anti-overfitting y contrato de update/migration.
+- `docs/alpha-layout.md`: frontera explícita entre repo SDD, runtime instalado, infraestructura y experiments.
+- `runtime/manifest.template.json`: versión runtime + schemas + ownership mínimo.
+- `runtime/config.template.json`: Engram Docker MCP, approval material-decisions y evolution capture.
+- `infra/engram/`: Engram local compartido en Docker con volume persistente.
+
+Decisiones:
+
+- experiments no bloquean el avance del Alpha; validan dudas específicas.
+- dogfooding real de una app nueva será la validación principal antes de V1 vs V2.
+- Evolution Loop es transversal, no una fase ni retro obligatoria.
+- signals de workflow se capturan solo cuando aportan conocimiento reusable; no se narra cada señal.
+- SDD no se autoedita silenciosamente durante features de producto.
+- versionar por separado `runtime_version`, `config_schema`, `memory_schema`.
+- preferir migración lazy (`read old, write new`) cuando sea segura.
+- `.sdd/runtime/**` es managed; `.sdd/config.json` es user-owned.
+- evitar recrear hashes/provenance complejos de V1 sin evidencia de necesidad.
+
+Engram Docker Alpha:
+
+- no requiere instalar el binario Engram en el host;
+- container persistente `sdd-engram` + volume `sdd-engram-data`;
+- agentes acceden por `docker exec -i ... engram mcp --tools=agent`;
+- adapters deben pasar `ENGRAM_PROJECT=<project-id>` estable porque el MCP dentro del container no ve el cwd/git remoto del host;
+- no se expone HTTP al host por defecto: `engram serve` documenta loopback local y el Alpha no necesita agregar un proxy todavía.
+
+Siguiente milestone:
+
+**M1b — primer vertical slice instalable**: implementar init/bootstrap mínimo + primer adapter real (preferentemente uno de los hosts que el usuario usa) para crear `.sdd/`, registrar project-id, conectar Engram Docker y ejecutar el kernel sobre una tarea real.

@@ -1,4 +1,4 @@
-# SDD V2 — WorkUnit Model v0.2
+# SDD V2 — WorkUnit Model v0.1
 
 > Estado: borrador experimental.  
 > Objetivo: definir una unidad de ejecución pequeña, cohesiva y recuperable sin convertir cada bloque en un mini-change ni reproducir la burocracia de SDD V1.
@@ -25,18 +25,6 @@ WorkUnit  = unidad pequeña de ejecución y verificación
 ```
 
 ## 2. Principios
-
-### W0 — Materialización lazy
-
-Un WorkUnit explícito se crea cuando está próximo a ejecutarse, hace falta para continuidad o habilita paralelismo real.
-
-No construir por adelantado todos los WorkUnits de un Change. El trabajo futuro puede permanecer como scope conocido o frente candidato hasta acercarse a la execution frontier.
-
-Regla de parada:
-
-> En cuanto existe un slice seguro y verificable para ejecutar, dejar de planificar y actuar.
-
-El DAG de WorkUnits es emergente: se extiende a medida que aparecen dependencias reales; no es un blueprint obligatorio del Change.
 
 ### W1 — Un objetivo por WorkUnit
 
@@ -102,12 +90,6 @@ Se paralelizan cuando puede establecerse razonablemente que:
 - el runtime dispone de capacidad real para ejecutarlos en paralelo.
 
 Si la independencia es incierta, ejecutar secuencialmente.
-
-### W7 — La descomposición debe pagarse sola
-
-Dividir trabajo tiene costo cognitivo. Materializar otro WorkUnit solo cuando reduce un riesgo concreto: pérdida de hilo, ambigüedad, necesidad de verificación separada, continuidad o paralelismo.
-
-Si describir y coordinar la división cuesta más que ejecutar el slice actual con seguridad, no dividir todavía.
 
 ## 3. Identidad
 
@@ -205,24 +187,25 @@ Si esa restricción aplica a varios WorkUnits, debe promoverse al Change o al co
 
 ## 6. Plan interno del bloque
 
-Un WorkUnit puede requerir varios pasos locales, pero no se exige persistirlos ni narrarlos antes de actuar. El HOW local pertenece al executor mientras no se convierta en una decisión material.
+Un WorkUnit puede contener varios pasos atómicos, pero esos pasos no son nuevas entidades por defecto.
 
-El agente puede pensar internamente en pasos como validar, editar y verificar, pero el record durable debería seguir siendo pequeño:
+Ejemplo:
 
-```yaml
-id: WU-03
-objective: "Implementar transferencia entre cajas"
-done_when:
-  - "valida origen y destino"
-  - "registra movimientos"
-  - "pasa la verificación puntual"
+```text
+WU-03 — Endpoint de transferencia
+
+1. agregar request validation
+2. implementar operación
+3. registrar movimientos
+4. agregar test puntual
+5. ejecutar verificación
 ```
 
-Si durante la ejecución aparecen objetivos, dependencias o verificaciones realmente independientes, extender la frontera con nuevos WorkUnits en ese momento.
+Si esos pasos empiezan a requerir objetivos, contexto, dependencias o verificación independientes, el WorkUnit debe dividirse.
 
 Regla provisional:
 
-> Dividir por independencia y carga cognitiva, pero detener la planificación apenas exista trabajo seguro para ejecutar.
+> Dividir por independencia y carga cognitiva, no para conseguir un número arbitrario de tareas.
 
 ## 7. Continuidad y progreso
 
@@ -435,7 +418,7 @@ compact
   -> Change + pocos WorkUnits explícitos cuando ayudan a continuidad
 
 full
-  -> Change + contratos más explícitos + solo la frontera de WorkUnits necesaria; el DAG completo sigue siendo emergente
+  -> Change + WorkUnit DAG + decisiones/especificación/evidencia según necesidad
 ```
 
 El router definirá cuándo materializar cada nivel.
@@ -496,15 +479,13 @@ No es:
 - hereda contexto y evita duplicarlo;
 - errores locales no crean automáticamente Changes;
 - descubrimientos reusables pueden promoverse;
-- dependencias pueden formar un DAG emergente;
-- los WorkUnits se materializan lazy, no de forma especulativa;
+- dependencias habilitan un DAG;
 - paralelismo requiere independencia positiva;
 - WorkUnits existentes no se renumeran durante replanificación.
 
 ### Experimental
 
 - tamaño óptimo;
-- tamaño recomendado de la execution frontier;
 - cantidad recomendada de pasos;
 - lifecycle/state explícito del WorkUnit;
 - forma exacta de `Progress`;
@@ -525,9 +506,9 @@ No es:
 7. ¿Cómo se recupera un WorkUnit parcialmente ejecutado después de pérdida de contexto?
 8. ¿Cuándo un retry debe seguir siendo el mismo WorkUnit y cuándo corresponde replanificar?
 
-## 19. Estado de integración
+## 19. Siguiente paso
 
-El Memory Contract y el Router ya existen. El siguiente consumidor del modelo es el Runtime Kernel v0, que debe usar WorkUnits solo para limitar la ventana cognitiva de ejecución, no como una fase previa de planificación.
+Con `Change Model` + `WorkUnit Model` ya existe suficiente dominio para diseñar un **Memory Contract v0 mínimo**.
 
 El contrato no debería intentar modelar toda Engram. Solo debe soportar las operaciones necesarias para:
 
