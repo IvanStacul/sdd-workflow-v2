@@ -281,3 +281,15 @@ Engram Docker Alpha:
 Siguiente milestone:
 
 **M1b — primer vertical slice instalable**: implementar init/bootstrap mínimo + primer adapter real (preferentemente uno de los hosts que el usuario usa) para crear `.sdd/`, registrar project-id, conectar Engram Docker y ejecutar el kernel sobre una tarea real.
+
+## Alpha vertical slice — Codex init (2026-08-15)
+
+- Engram Docker was validated by the user on Windows/Docker Desktop: container healthy, Engram 1.20.0, HTTP health OK, memory saved/searched, persistence survived restart and compose down/up.
+- First real adapter is Codex.
+- `sdd-v2 init` is implemented as a Node 20 CLI (`cli/sdd.mjs`).
+- Installed project shape: `.sdd/{config.json,manifest.json,runtime/kernel.md}`, SDD section in `AGENTS.md`, SDD section in `.codex/config.toml`.
+- Codex MCP uses `docker exec -i -e ENGRAM_PROJECT=<project_id> sdd-engram engram mcp --tools=agent`.
+- `.sdd/config.json` is project-owned and preserved on re-init; manifest/runtime and delimited adapter sections are SDD-managed.
+- `init` must remain idempotent and must preserve user-owned `[mcp_servers.engram]` rather than overwrite it.
+- Memory record naming is now present in the Codex runtime section so Change/WorkUnit/Decision/Evidence/WorkflowSignal can be exercised in a real project without a separate middleware library.
+- Next: run the installer on a disposable repo, open a fresh Codex session, verify Engram MCP tools are visible, then create the first real app with SDD V2 dogfooding.
