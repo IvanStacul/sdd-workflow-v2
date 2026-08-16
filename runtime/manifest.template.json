@@ -7,7 +7,6 @@
     "memory": 1
   },
   "managed_paths": [
-    ".sdd/runtime",
-    ".sdd/manifest.json"
+    ".sdd/runtime"
   ]
 }

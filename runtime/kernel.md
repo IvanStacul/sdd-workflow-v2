@@ -116,9 +116,3 @@ No repetir un plan detallado de lo ya ejecutado.
 - No planificación exhaustiva antes de editar.
 - No backend de memoria define Change/WorkUnit/relations.
 - No explanation-first cuando ya existe un slice seguro.
-
-## 10. Evolution
-
-Después de trabajo material o fricción notable, hacer un chequeo silencioso: si hubo un costo/fallo reusable atribuible al workflow, persistir un `WorkflowSignal` compacto. No registrar ruido local ni interrumpir al usuario por cada signal.
-
-No modificar SDD silenciosamente mientras se implementa un producto. Signals se acumulan y solo se promueven a mejora cuando existe evidencia suficiente o impacto material. Toda mejora del runtime debe declarar compatibilidad de `runtime_version`, `config_schema` y `memory_schema`; preferir `read old, write new` antes que migraciones masivas.

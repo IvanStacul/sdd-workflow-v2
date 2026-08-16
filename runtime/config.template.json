@@ -1,7 +1,5 @@
 {
   "schema_version": 1,
-  "project_id": "project-id",
-  "adapter": "codex",
   "memory": {
     "provider": "engram",
     "transport": "docker-mcp",

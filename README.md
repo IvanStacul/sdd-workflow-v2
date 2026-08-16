@@ -1,46 +1,54 @@
 # SDD Workflow V2 — Alpha
 
-Action-first Spec-Driven Development experiment evolving toward a usable workflow with proportional ceremony, lazy WorkUnits, persistent memory, and evidence-driven self-improvement.
+V2 busca preservar trazabilidad, continuidad y calidad de Spec-Driven Development con menos ceremony y menor tiempo hasta acción.
 
-## Current Alpha
+## Estado
 
-Implemented:
-- minimal runtime kernel;
-- Change / WorkUnit / Memory / Router / Evolution contracts;
-- Engram 1.20.0 local persistent memory via Docker;
-- first real installer: Codex adapter;
-- idempotent project bootstrap.
+Core conceptual disponible:
 
-## Run tests
+- Change Model
+- WorkUnit Model
+- Router Contract
+- Execution Contract
+- Memory Contract
+- Evolution Contract
+- Runtime Kernel
 
-```bash
-npm test
+Alpha funcional inicial validado: `sdd-v2 init`, adapter Codex, Engram local en Docker y memoria persistente cross-session. Próximo milestone: dogfooding sobre una aplicación real creada desde cero.
+
+## Principio operativo
+
+```text
+request -> lightest safe route -> minimum context -> executable frontier
+        -> ACT -> proportional verify -> useful persistence -> next/close
 ```
 
-## Initialize a project
+No existe una cadena obligatoria proposal/spec/design/tasks/apply/verify.
 
-From this repository:
-
-```bash
-node cli/sdd.mjs init D:/path/to/project --adapter codex
-```
-
-Or link the Alpha CLI locally:
+## Engram sin instalación local
 
 ```bash
-npm link
-sdd-v2 init D:/path/to/project --adapter codex
+cd infra/engram
+cp .env.example .env
+docker compose up -d --build
 ```
 
-The project receives `.sdd/`, an SDD-managed section in `AGENTS.md`, and a project-scoped `.codex/config.toml` entry that launches Engram through the `sdd-engram` Docker container.
+Los agentes acceden por MCP usando `docker exec -i`; ver `infra/engram/README.md`.
 
-After init, start a fresh Codex session from the target repository so project instructions and MCP config are reloaded.
+## Alpha validado
 
-## Repository boundaries
+Validado en Windows + Docker Desktop + Codex con Engram 1.20.0:
 
-- `runtime/`: product installed into projects.
-- `cli/`, `adapters/`: Alpha product tooling.
-- `infra/`: shared external infrastructure.
-- `docs/`: design/reference.
-- `tests/`: product tests.
-- `experiments/`: disposable research, never installed.
+- container healthy;
+- SQLite persistente tras restart/down-up;
+- `sdd-v2 init` instala `.sdd/` + adapter Codex;
+- Codex carga el kernel;
+- MCP conecta a Engram dentro de Docker;
+- `mem_save` persiste en el project-id correcto;
+- `mem_search` recupera la memoria;
+- una sesión nueva recupera memoria de la sesión anterior.
+
+
+## Source vs installed project
+
+Ver `docs/alpha-layout.md`. `experiments/` pertenece solo al desarrollo del framework y nunca se distribuye al proyecto consumidor.
