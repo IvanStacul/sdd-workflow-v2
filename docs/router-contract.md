@@ -1,148 +1,115 @@
-# SDD V2 — Router Contract v0.1
+# SDD V2 — Router Contract v0.2
 
 > Estado: experimental. Runtime target: reglas compactas, no un phase graph.
 
 ## Objetivo
 
-Elegir la **ceremonia mínima suficiente** para ejecutar un request con seguridad. El router no planifica el change completo; decide cuánto contrato hace falta antes de actuar.
+Elegir la **ceremonia previa mínima suficiente** para ejecutar un request con seguridad. El router no decide por sí solo qué debe persistirse; la durabilidad es una dimensión separada.
 
 ## Dimensiones separadas
 
 ```text
-process route:       direct | compact | full
-execution topology: inline | delegated | auto
-human approval:      material-decisions (default) | supervised
+planning route:       direct | compact | full
+durability:           ephemeral | receipt | continuity
+execution topology:   inline | delegated
+human approval:       material-decisions (default) | supervised
 ```
 
-`delegated` y `auto` no son rutas de complejidad.
+Esta separación reduce sensibilidad a la inteligencia del modelo: un agente puede acertar en que no necesita plan previo (`direct`) sin que eso autorice perder contexto durable.
 
-## Regla base
+## Route: regla base
 
 ```text
-usar la ruta más liviana que permita actuar con seguridad
+usar la menor ceremonia previa que permita actuar correctamente
 ```
 
-No escalar por cantidad de archivos solamente. Señales importantes: ambigüedad, riesgo, reversibilidad, contratos compartidos, scope, duración entre sesiones y valor de una decisión durable.
+No escalar por cantidad de archivos. Señales: ambigüedad, riesgo, reversibilidad, contratos compartidos, coordinación y costo de una decisión equivocada.
 
-## `direct`
+### `direct`
 
-Usar cuando el request está suficientemente claro y el agente puede ejecutar/verificar sin crear un Change durable.
-
-Señales positivas:
-
-- comportamiento/localización entendidos;
-- bajo riesgo y fácil reversión;
-- cambio local o mecánico;
-- no introduce contrato/arquitectura material;
-- no necesita continuidad extensa.
-
-Runtime:
+Usar cuando el request está suficientemente claro y puede encontrarse una frontera segura sin estabilizar un contrato previo.
 
 ```text
-understand -> ACT -> verify -> report
+understand -> ACT -> verify -> persist according to durability -> report
 ```
 
-No crear Change/WorkUnit por ceremonia. Un WorkUnit puede ser implícito.
+`direct` significa **sin contrato previo obligatorio**, no “sin memoria”.
 
-## `compact`
+### `compact`
 
-Ruta default cuando hace falta continuidad o contrato explícito, pero un full design/spec sería exceso.
-
-Persistencia típica:
-
-- un ChangeBrief compacto;
-- solo WorkUnits próximos a ejecución;
-- Decisions/Evidence cuando existan.
-
-Runtime:
+Usar cuando un contrato pequeño antes de editar reduce retrabajo: scope con varias partes acopladas, coordinación, decisión durable que condiciona el slice o ambigüedad moderada.
 
 ```text
-capture sufficient contract
--> materialize executable frontier
--> ACT
--> verify
--> update memory
--> next frontier
+capture sufficient contract -> frontier -> ACT -> verify -> persist -> next
 ```
 
-No generar roadmap/DAG completo de antemano.
+No generar roadmap/DAG completo.
 
-## `full`
+### `full`
 
-Usar solo cuando separar y estabilizar decisiones antes de implementar reduce riesgo real.
+Usar solo cuando estabilizar contratos antes de implementar reduce riesgo real: ambigüedad funcional material, migración destructiva, security/trust boundary, contrato público compartido, coordinación cross-domain o arquitectura costosa de revertir.
 
-Señales fuertes:
+`full` no implica `proposal -> spec -> design -> tasks`.
 
-- ambigüedad funcional material;
-- migración destructiva o difícil de revertir;
-- seguridad/permisos/trust boundaries relevantes;
-- contrato público/shared que coordina múltiples consumidores;
-- cambio cross-domain donde el orden/boundaries importan;
-- decisión arquitectónica costosa de revertir;
-- múltiples equipos/agentes necesitan un contrato estable antes de ejecutar.
+## Durability (separada del route)
 
-`full` NO implica automáticamente una cadena fija `proposal -> spec -> design -> tasks`. Significa mayor explicitud del contrato; los artefactos concretos siguen siendo adaptativos.
+- `ephemeral`: cosmetic/mechanical/local y completamente explicable por código/tests; sin pending work.
+- `receipt`: capability/schema/public contract/tooling/security material completado en la sesión; persistir un Change Receipt mínimo al cierre.
+- `continuity`: trabajo pendiente/handoff/cross-session explícito; persistir Change abierto + frontier mínima antes de cortar contexto.
 
-## Stop rule
+Reglas deterministas de guardia:
 
-El router deja de planificar en cuanto existe una execution frontier segura.
+- “dejalo pendiente para otra sesión”, “continuaremos después” o equivalente => `continuity`, aunque route sea `direct`;
+- introducir una nueva capability de dominio o schema persistente => como mínimo `receipt` al completar;
+- un wording/label/UI mecánico sin consecuencia durable => normalmente `ephemeral`.
 
+## Stop rules
+
+Planning:
 ```text
 ¿puedo ejecutar un slice correcto ahora?
   sí -> ACT
   no -> aclarar/investigar/descomponer lo mínimo
 ```
 
-## Escalation dinámica
-
-La ruta inicial no es sentencia permanente.
-
+Recovery:
 ```text
-direct -> compact -> full
+¿ya conozco intención + restricciones + frontier?
+  sí -> STOP RETRIEVAL -> ACT
+  no -> recuperar el siguiente record mínimo
 ```
 
-Escalar cuando aparece evidencia nueva: scope drift, riesgo, decisión durable, contrato compartido, work demasiado amplio o bloqueo conceptual.
+## Escalation dinámica
 
-En v0 no necesitamos de-escalation formal: una vez resuelta la parte compleja, el executor simplemente vuelve a actuar con el contrato ya obtenido.
+Route puede escalar `direct -> compact -> full` por nueva evidencia. Durability puede escalar `ephemeral -> receipt -> continuity` si aparece valor durable o trabajo pendiente. Son escalaciones independientes.
 
 ## Decision boundary
 
-Default: no pedir aprobación por fase.
+Default: preguntar solo por decisiones materiales que no pueden resolverse con evidencia suficiente, especialmente si son irreversibles, amplían scope o cambian comportamiento esperado.
 
-Preguntar cuando aparece una decisión material que el agente no puede resolver con evidencia suficiente, especialmente si es irreversible, amplía scope o cambia comportamiento esperado.
+## WorkUnits
 
-El resto se decide localmente y se registra solo si vale la pena recordar.
-
-## Interacción con WorkUnits
-
-El router NO genera todos los WorkUnits.
-
-- `direct`: normalmente ninguno explícito.
-- `compact/full`: materializar solo los necesarios para la frontera inmediata, continuidad o paralelismo real.
-- dividir solo hasta que el trabajo sea ejecutable/verificable.
-
-## Interacción con policies
-
-Policies como minimality, Action First, TDD, security o UI conventions modifican el comportamiento del executor, no crean rutas nuevas.
+El router no genera todos los WorkUnits. Materializar solo los necesarios para frontera inmediata, continuidad real o paralelismo positivo. Un receipt de un trabajo completado no necesita WorkUnit retroactivo.
 
 ## Runtime form
 
 ```text
 ROUTER
-- Choose the lightest route that makes the request safe to execute.
-- direct: clear, local, reversible; act without durable workflow artifacts.
-- compact: persist a small Change contract when continuity/scope/decisions matter.
-- full: add explicit contracts only for material ambiguity, risk or coordination.
-- Stop planning once a safe executable frontier exists.
-- Escalate when new evidence increases scope/risk/ambiguity.
-- Ask for material decisions, not phase approvals.
+- Route controls pre-action ceremony, not persistence.
+- direct: act as soon as a safe frontier exists.
+- compact/full: add only the contract needed before action.
+- Durability is separate: ephemeral | receipt | continuity.
+- Explicit cross-session pending work => continuity.
+- Material completed capability/schema/contract => at least receipt.
+- Stop planning/retrieval once the executable frontier is known.
 ```
 
 ## Hipótesis a medir
 
-- route accuracy y escalations tardías;
+- route accuracy;
+- durability accuracy;
 - time-to-first-edit;
-- artefactos/records creados;
-- tokens/tool calls antes del primer edit;
-- retrabajo por haber elegido una ruta demasiado liviana;
-- tiempo desperdiciado por elegir una ruta demasiado pesada.
+- memory calls before first edit;
+- records creados y utilidad posterior;
+- retrabajo por route demasiado liviano;
+- overhead por route/durability demasiado pesados.

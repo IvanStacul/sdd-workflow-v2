@@ -4,32 +4,47 @@ const TOML_START = '# sdd-v2:start';
 const TOML_END = '# sdd-v2:end';
 
 export function renderAgentsSection() {
-  return `${START}
-## SDD V2
-
-Use \`.sdd/runtime/kernel.md\` as the operating contract for coding work in this repository.
-
-Runtime rules:
-- choose the lightest safe route: \`direct | compact | full\`;
-- when a safe executable slice exists, stop planning and act;
-- do not pre-create speculative Changes or WorkUnits;
-- keep local HOW local unless it becomes a material decision or reusable knowledge;
-- verify proportionally before declaring completion;
-- use Engram memory only for continuity, material decisions/evidence, reusable knowledge, and workflow signals;
-- if Engram is unavailable, direct ephemeral work may continue safely; durable work must surface the degradation before closing;
-- after material work or notable friction, silently check for reusable SDD workflow friction; persist a compact signal when high-value, without interrupting normal product work;
-- do not modify SDD itself during product work; capture reusable workflow friction as a compact signal instead.
-
-Memory naming convention when Engram tools are available:
-- Change snapshot: title \`sdd/change/<change-id>\`, topic_key \`sdd-change/<change-id>\`, type \`architecture\`.
-- WorkUnit snapshot: title \`sdd/workunit/<change-id>/<wu-id>\`, topic_key \`sdd-workunit/<change-id>-<wu-id>\`, type \`architecture\`.
-- Material decision: title \`sdd/decision/<change-id>/<slug>\`, type \`decision\`, append-only unless explicitly superseded.
-- Evidence: title \`sdd/evidence/<change-id>/<wu-id>/<kind>\`, type \`discovery\`, append-only.
-- Reusable project knowledge: use \`pattern\`, \`config\`, or \`discovery\` as semantically appropriate; use a stable topic_key only when the knowledge evolves.
-- Workflow signal: title \`sdd/signal/<slug>\`, topic_key \`sdd-signal/<slug>\`, type \`learning\`; keep evidence/cost concise.
-
-Retrieve progressively: search compactly first, then fetch full observations only when needed. Never bulk-load all SDD memories.
-${END}`;
+  return [
+    START,
+    '## SDD V2',
+    '',
+    'Use `.sdd/runtime/kernel.md` as the operating contract for coding work in this repository.',
+    '',
+    'Two independent decisions:',
+    '- planning route: `direct | compact | full`;',
+    '- durability: `ephemeral | receipt | continuity`.',
+    '',
+    'Runtime rules:',
+    '- route controls pre-action ceremony; it does NOT decide whether durable context is needed;',
+    '- when a safe executable slice exists, stop planning and act;',
+    '- explicit pending work for another session/handoff => `continuity` even if route is `direct`;',
+    '- a completed material domain capability, persistent schema, public/API contract, material tooling dependency, security/policy change => at least a minimal `receipt`;',
+    '- cosmetic/mechanical/local work may remain `ephemeral`; do not persist a decision just to prove memory was used;',
+    '- do not pre-create speculative Changes or WorkUnits;',
+    '- WorkUnits are lazy and never retroactively created for a receipt;',
+    '- verify the actual acceptance proportionally before declaring completion;',
+    '- on continuation, use targeted recovery: validate current project only if needed -> `mem_search` for `SDD Change` -> `mem_get_observation` for the relevant open Change -> STOP RETRIEVAL -> ACT;',
+    '- if Engram is unavailable, ephemeral work may continue safely; required continuity must surface the degradation before closing;',
+    '- after material work or notable friction, silently check for reusable SDD workflow friction; capture only high-value signals;',
+    '- do not modify SDD itself during product work.',
+    '',
+    'Engram Docker rules:',
+    '- `.sdd/config.json.project_id` is the authoritative project identity; MCP is already started with `ENGRAM_PROJECT` pinned to it;',
+    '- do not pass host absolute paths as `mem_session_start.directory`; Engram session lifecycle is optional for SDD hot path;',
+    '- prefer canonical Change/receipt records over session narration;',
+    '- use `capture_prompt=false` for automated SDD records.',
+    '',
+    'Memory naming convention when Engram tools are available:',
+    '- Change/receipt: title `SDD Change <change-id>`, topic_key `sdd-change/<change-id>`, type `architecture`.',
+    '- WorkUnit snapshot: title `SDD WorkUnit <change-id> <wu-id>`, topic_key `sdd-workunit/<change-id>-<wu-id>`, type `architecture`.',
+    '- Material decision: title `SDD Decision <change-id> <slug>`, type `decision`, append-only unless superseded.',
+    '- Evidence: title `SDD Evidence <change-id> <wu-id-or-close> <kind>`, type `discovery`, append-only when useful.',
+    '- Reusable project knowledge: use `pattern`, `config`, or `discovery` semantically; stable topic_key only when evolving.',
+    '- Workflow signal: title `SDD Signal <slug>`, topic_key `sdd-signal/<slug>`, type `learning`; keep evidence/cost concise.',
+    '',
+    'Never bulk-load all SDD memories.',
+    END,
+  ].join('\n');
 }
 
 export function renderCodexToml(projectId, containerName = 'sdd-engram') {
@@ -41,6 +56,7 @@ command = "docker"
 args = ["exec", "-i", "-e", "ENGRAM_PROJECT=${safeProject}", "${safeContainer}", "engram", "mcp", "--tools=agent"]
 enabled = true
 required = false
+enabled_tools = ["mem_save", "mem_search", "mem_get_observation", "mem_current_project"]
 startup_timeout_sec = 10
 tool_timeout_sec = 30
 ${TOML_END}`;

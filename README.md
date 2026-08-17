@@ -14,7 +14,7 @@ Core conceptual disponible:
 - Evolution Contract
 - Runtime Kernel
 
-Alpha funcional inicial validado: `sdd-v2 init`, adapter Codex, Engram local en Docker y memoria persistente cross-session. Alpha.2 agrega `sdd-v2 update` compatible para poder evolucionar el workflow durante dogfooding sin reinstalar proyectos.
+Alpha funcional inicial validado: `sdd-v2 init`, adapter Codex, Engram local en Docker y memoria persistente cross-session. Alpha.2 agregó `sdd-v2 update`; Alpha.3 separa planning route de durability y reduce el surface de memoria del adapter Codex para el hot path.
 
 ## Principio operativo
 
@@ -65,3 +65,13 @@ El update reemplaza únicamente runtime/bloques administrados y preserva `.sdd/c
 ## Dogfooding
 
 La validación principal continúa sobre una app real desde cero. Ver `docs/dogfooding.md`.
+
+
+## Route y durability (Alpha.3)
+
+SDD V2 separa dos decisiones que antes estaban acopladas:
+
+- **planning route** `direct | compact | full`: cuánta ceremonia/contrato hace falta antes de actuar;
+- **durability** `ephemeral | receipt | continuity`: qué contexto debe sobrevivir después del slice/sesión.
+
+Esto permite que una feature clara se ejecute `direct` pero deje un receipt mínimo, mientras un cambio cosmético puede ser `direct + ephemeral`. Trabajo explícitamente pendiente para otra sesión siempre requiere `continuity`.

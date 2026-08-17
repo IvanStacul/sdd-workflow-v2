@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "managed_by": "sdd-v2",
-  "runtime_version": "0.1.0-alpha.2",
+  "runtime_version": "0.1.0-alpha.3",
   "schemas": {
     "config": 1,
     "memory": 1

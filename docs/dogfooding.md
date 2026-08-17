@@ -101,3 +101,41 @@ El primer dogfood se considera útil cuando la misma app haya demostrado al meno
 4. evidencia persistida y recuperada;
 5. al menos una WorkflowSignal real o evidencia razonable de que no hubo señal;
 6. una actualización compatible de SDD mediante `sdd-v2 update` y continuación posterior.
+
+
+## Dogfood Round 1 — empirical findings (2026-08-17)
+
+Environment: Laravel helpdesk, Codex, Engram Docker, GPT-5.6 Luna high.
+
+Observed:
+
+- initial ticket capability completed in ~5 min; no canonical SDD Change/WorkUnit/Evidence was found afterward;
+- a cosmetic `open|closed -> Abierto|Cerrado` change took ~1m22s, correctly reported route `direct`, but persisted a decision record despite being local/mechanical;
+- backend comments intentionally left UI for a new session, took ~2m34s, still reported route `direct`, used Engram heavily and persisted enough context to resume;
+- continuation from a fresh session successfully recovered the pending UI frontier and completed it, proving useful cross-session recovery;
+- continuation spent ~1m45s before first edit, indicating retrieval/context reconstruction overhead;
+- final persistence hit an Engram session/project-resolution issue after `mem_session_start` was given a host absolute path while MCP runs inside Docker.
+
+Interpretation:
+
+1. `direct|compact|full` was overloaded: it governed both pre-action ceremony and implied persistence. Models can choose direct correctly for execution while still needing durable trace/continuity.
+2. Persistence was model-sensitive in both directions: meaningful feature omitted canonical SDD records, while trivial UI wording saved a decision.
+3. Cross-session recovery works, but memory retrieval needs its own stop rule.
+4. Engram session lifecycle is not necessary for SDD continuity and adds project-resolution surface in Docker.
+
+Alpha.3 response:
+
+- separate `planning route` from `durability`;
+- add `ephemeral | receipt | continuity`;
+- explicit cross-session pending work deterministically requires continuity;
+- material completed capability/schema/contract requires at least a minimal Change Receipt;
+- mechanical UI changes normally remain ephemeral;
+- add `STOP RETRIEVAL -> ACT`;
+- make Engram session lifecycle optional and forbid host-path `mem_session_start.directory` in Docker MCP.
+
+Next measurements:
+
+- time/tool calls to first edit after alpha.3 update;
+- whether label-like direct work stops creating memory noise;
+- whether a completed new capability emits one minimal receipt without WorkUnits;
+- whether explicit cross-session work leaves a canonical open Change and resumes with fewer Engram calls.

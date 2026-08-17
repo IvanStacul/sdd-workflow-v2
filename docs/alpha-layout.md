@@ -102,6 +102,14 @@ read .sdd/manifest.json
 - preservación de `.sdd/config.json` y contenido user-owned;
 - rechazo fail-closed cuando aparece un schema que requiere migración no implementada.
 
+## Incluido desde Alpha.3
+
+- planning route (`direct | compact | full`) separada de durability (`ephemeral | receipt | continuity`);
+- Change Receipt mínimo para trabajo material completado sin planificación previa;
+- continuity obligatoria ante trabajo explícitamente pendiente/handoff;
+- adapter Codex limita Engram al tool surface del hot path (`mem_save`, `mem_search`, `mem_get_observation`, `mem_current_project`);
+- lifecycle de sesión Engram queda fuera del hot path por defecto, especialmente bajo Docker MCP.
+
 ## No incluido todavía
 
 - migradores concretos;

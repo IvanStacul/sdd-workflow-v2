@@ -40,6 +40,8 @@ test('init installs minimal SDD runtime and Codex adapter', () => {
   assert.match(codex, /\[mcp_servers\.engram\]/);
   assert.match(codex, /ENGRAM_PROJECT=demo-app/);
   assert.match(codex, /sdd-engram/);
+  assert.match(codex, /enabled_tools = \["mem_save", "mem_search", "mem_get_observation", "mem_current_project"\]/);
+  assert.doesNotMatch(codex, /mem_session_start/);
 
   const agents = fs.readFileSync(path.join(dir, 'AGENTS.md'), 'utf8');
   assert.match(agents, /<!-- sdd-v2:start -->/);
@@ -96,14 +98,14 @@ test('update previews and applies compatible runtime changes while preserving pr
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
 
   const oldManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-  oldManifest.runtime_version = '0.1.0-alpha.1';
+  oldManifest.runtime_version = '0.1.0-alpha.2';
   fs.writeFileSync(manifestPath, JSON.stringify(oldManifest, null, 2) + '\n');
   fs.writeFileSync(kernelPath, '# stale kernel\n');
   fs.appendFileSync(agentsPath, '\nProject-owned tail.\n');
 
   const beforeDryRunKernel = fs.readFileSync(kernelPath, 'utf8');
   const dryRun = runUpdate(dir, '--dry-run');
-  assert.match(dryRun, /0\.1\.0-alpha\.1 -> 0\.1\.0-alpha\.2/);
+  assert.match(dryRun, /0\.1\.0-alpha\.2 -> 0\.1\.0-alpha\.3/);
   assert.match(dryRun, /mode: dry-run/);
   assert.equal(fs.readFileSync(kernelPath, 'utf8'), beforeDryRunKernel);
 
@@ -112,7 +114,7 @@ test('update previews and applies compatible runtime changes while preserving pr
   assert.match(output, /config schema: 1 -> 1 \(compatible\)/);
 
   const updatedManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-  assert.equal(updatedManifest.runtime_version, '0.1.0-alpha.2');
+  assert.equal(updatedManifest.runtime_version, '0.1.0-alpha.3');
   assert.deepEqual(updatedManifest.managed_sections, ['AGENTS.md#sdd-v2', '.codex/config.toml#sdd-v2']);
 
   const updatedConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
@@ -120,6 +122,9 @@ test('update previews and applies compatible runtime changes while preserving pr
 
   const kernel = fs.readFileSync(kernelPath, 'utf8');
   assert.match(kernel, /Evolution feedback/);
+  assert.match(kernel, /Route no decide por sí sola/);
+  assert.match(fs.readFileSync(agentsPath, 'utf8'), /durability: `ephemeral \| receipt \| continuity`/);
+  assert.match(fs.readFileSync(agentsPath, 'utf8'), /do not pass host absolute paths/);
   assert.match(fs.readFileSync(agentsPath, 'utf8'), /Project-owned tail\./);
 });
 

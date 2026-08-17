@@ -1,4 +1,4 @@
-# SDD V2 — Memory Contract v0.1
+# SDD V2 — Memory Contract v0.3
 
 > Estado: borrador experimental.
 > Objetivo: definir las capacidades mínimas que SDD V2 necesita de una memoria persistente sin convertir a Engram, Markdown o SQLite en parte del modelo de dominio.
@@ -46,6 +46,49 @@ No persistir por defecto:
 - WorkUnits futuros especulativos;
 - output completo de terminal;
 - razonamiento interno del modelo.
+
+
+## 2.1 Durability mode
+
+Persistencia y route son decisiones separadas. SDD clasifica cada trabajo con una durabilidad mínima:
+
+### `ephemeral`
+
+No necesita record SDD durable. Adecuado para cambios mecánicos/cosméticos/locales donde código + tests reconstruyen suficientemente la intención y no queda trabajo pendiente.
+
+### `receipt`
+
+Trabajo material completado en una sesión que no necesitó contrato previo pero sí merece trazabilidad mínima. Se representa como un **Change cerrado** creado/actualizado al cierre, no como una entidad nueva:
+
+```text
+Change Receipt
+- id
+- lifecycle: closed/completed
+- intent/outcome
+- scope/acceptance solo si aportan
+- evidence resumida
+- decisiones materiales solo si existieron
+```
+
+No crear WorkUnit retroactivo para fabricar ceremonia.
+
+Como guardia, una nueva capability de dominio, schema persistente, contrato/API pública, dependencia/tooling material o security/policy debe producir como mínimo un receipt salvo que ya exista un Change durable que la cubra.
+
+### `continuity`
+
+Obligatorio cuando algo debe sobrevivir al contexto actual: trabajo explícitamente pendiente para otra sesión, handoff/delegation, blocker o decisión pendiente, o frontier que se retomará después.
+
+Antes de terminar el contexto se debe poder reconstruir:
+
+- Change abierto;
+- qué está hecho;
+- frontier pendiente;
+- restricciones/decisiones indispensables;
+- evidencia previa que condiciona el siguiente slice.
+
+WorkUnit solo si mejora esa reconstrucción; `session_summary` es opcional y no sustituye el Change canónico.
+
+Regla: `continuity > receipt > ephemeral`.
 
 ## 3. Records lógicos iniciales
 
@@ -275,6 +318,16 @@ Regla:
 
 > búsqueda amplia primero debe devolver referencias/resúmenes; contenido completo se carga bajo demanda.
 
+### Stop rule de recuperación
+
+La memoria no debe transformarse en una fase de investigación. En continuación:
+
+```text
+mem_search("SDD Change") -> relevant open Change -> mem_get_observation -> STOP RETRIEVAL -> ACT
+```
+
+Cuando intención, restricciones y frontier ya están claras, no recorrer timeline, sesiones o memories adicionales “por si acaso”.
+
 ## 9. Continuidad y Execution Frontier
 
 El Memory Store no materializa el plan completo.
@@ -370,6 +423,14 @@ Engram MCP puede operar por stdio y es suficiente para el hot path del agente.
 
 El exporter custom puede usar un mecanismo bulk (por ejemplo export JSON) fuera del hot path. La V2 no debería exigir `engram serve` solo para ejecutar Changes.
 
+### Caveat 5 — Docker MCP y lifecycle de sesión
+
+En el Alpha `docker-mcp`, `.sdd/config.json.project_id` es la identidad SDD y el proceso MCP se inicia con `ENGRAM_PROJECT=<project-id>`.
+
+No pasar una ruta absoluta del host Windows/Linux como `mem_session_start.directory`: ese path puede no existir dentro del contenedor y Engram resuelve `mem_session_start` desde el `directory` explícito cuando se suministra. Para el hot path SDD, `mem_session_start/end` son opcionales; Change/receipt + búsqueda dirigida son suficientes para continuidad.
+
+Si se usan APIs de sesión, no deben reemplazar ni contradecir el project id canónico de SDD.
+
 ## 12. Export
 
 Export no forma parte del Memory Store core.
@@ -458,7 +519,7 @@ Aceptadas provisionalmente:
 
 No cerrar antes de implementar/probar:
 
-- ¿qué records necesita realmente un Change `direct`, `compact` y `full`?
+- ¿cuánto valor aporta el receipt mínimo frente a git/code-only en distintas clases de cambios?
 - ¿WorkUnit completado se conserva como snapshot o basta evidence/event?
 - ¿cuánto `knowledge` cargar automáticamente sin recrear context inflation?
 - ¿conviene serializar payload SDD dentro de Engram como Markdown estructurado, JSON o formato híbrido?

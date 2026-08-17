@@ -11,13 +11,13 @@ La V1 permanece como baseline. La V2 se diseña separada para poder comparar amb
 
 ## Current snapshot
 
-- runtime: `0.1.0-alpha.2`;
+- runtime: `0.1.0-alpha.3`;
 - schemas: config `1`, memory `1`;
 - adapter activo: Codex;
 - memory: Engram 1.20.0 en Docker, validado real;
 - CLI: `sdd-v2 init`, `sdd-v2 update [--dry-run]`;
 - tests locales del framework: 5/5 PASS;
-- next: `sdd-dogfood-helpdesk` y primer frontier real de tickets;
+- dogfood activo: `sdd-dogfood-helpdesk`; tickets + browser smoke + comments ya ejercitaron direct, continuidad y recovery;
 - cualquier mejora detectada se aplica al repo SDD y luego a la misma app con `sdd-v2 update`.
 
 ## Problemas observados en V1
@@ -78,7 +78,7 @@ Memory Store
 ## Hipótesis actuales, no decisiones finales
 
 - rutas de proceso candidatas: `direct | compact | full`;
-- topología de ejecución separada: `inline | delegated | auto`;
+- topología de ejecución separada: `inline | delegated`;
 - posibilidad de escalar ruta durante ejecución;
 - Engram como backend default;
 - records lógicos iniciales: `ChangeBrief`, `Decision`, `Progress`, `Evidence`, `SessionSummary`;
@@ -98,7 +98,7 @@ Memory Store
 
 ## Estado actual
 
-SDD V2 está en `0.1.0-alpha.2` y ya tiene un vertical slice funcional validado con Codex + Engram Docker: init, kernel, MCP, persistencia/recovery cross-session y update compatible. La validación principal pasa ahora a dogfooding sobre una aplicación real.
+SDD V2 está en `0.1.0-alpha.3`. Init/update + Codex + Engram Docker están validados y el dogfood real del helpdesk ya produjo el primer refinamiento empírico: planning route y durability quedan separadas; continuity/recovery funciona pero debe reducir llamadas de memoria antes de ACT.
 
 Artefactos de diseño actuales:
 
@@ -326,3 +326,38 @@ Se agrega:
 - `docs/dogfooding.md` define el primer dogfood real, usando un helpdesk Laravel pequeño como challenge pool, no roadmap pre-materializado.
 
 Próximo paso operativo: crear `sdd-dogfood-helpdesk`, ejecutar `sdd-v2 init`, abrir una sesión Codex nueva y entregar solo el primer frontier de tickets. Las mejoras del workflow detectadas durante ese desarrollo se aplican al repo SDD, se versionan y se llevan a la misma app mediante `sdd-v2 update`.
+
+
+## Update — Alpha.3: separate planning route from durability
+
+Dogfood real del helpdesk (GPT-5.6 Luna high) mostró tres patrones consistentes:
+
+- una capability completa de tickets pudo terminar sin Change/WorkUnit/Evidence canónicos;
+- un cambio cosmético `open/closed -> Abierto/Cerrado` eligió `direct` correctamente pero persistió una decisión innecesaria;
+- backend de comentarios dejado explícitamente para continuar en otra sesión también eligió `direct`, aunque usó Engram y la recuperación cross-session funcionó.
+
+La conclusión no es “direct está mal”, sino que route estaba tomando dos responsabilidades. Alpha.3 separa:
+
+```text
+planning route: direct | compact | full
+durability:     ephemeral | receipt | continuity
+```
+
+- route = cuánta ceremonia/contrato hace falta ANTES de ACT;
+- durability = qué debe sobrevivir DESPUÉS/ENTRE contextos.
+
+Guardias:
+
+- cambio mecánico/cosmético local => normalmente `ephemeral`;
+- capability de dominio, schema persistente, contrato público/API, tooling material, security/policy completado => mínimo `receipt`;
+- scope explícitamente pendiente para otra sesión/handoff => `continuity` aunque route sea `direct`.
+
+`receipt` no introduce una entidad nueva: es un Change cerrado mínimo creado/actualizado al cierre. No requiere WorkUnit retroactivo.
+
+También se agrega `STOP RETRIEVAL -> ACT` cuando intención + restricciones + frontier ya están conocidas. El dogfood mostró ~1m45s de recuperación antes de editar en una continuación.
+
+Engram Docker: el MCP ya está pinneado por `ENGRAM_PROJECT=<project-id>`. No usar host absolute paths en `mem_session_start.directory`; el lifecycle de sesión Engram pasa a ser opcional para el hot path SDD. Continuidad se apoya en Change/receipt + retrieval dirigido.
+
+Runtime: `0.1.0-alpha.3`; config/memory schemas permanecen en 1 (compatible update).
+
+Adapter Codex Alpha.3 restringe Engram al hot path: `mem_save`, `mem_search`, `mem_get_observation`, `mem_current_project`. Session lifecycle queda oculto por defecto para reducir tool noise y evitar project-resolution incorrecta bajo Docker.
