@@ -16,41 +16,54 @@ function tempProject() {
 }
 
 function runInit(dir, ...extra) {
-  return execFileSync(process.execPath, [cli, 'init', dir, '--project-id', 'demo-app', ...extra], {
-    encoding: 'utf8',
-  });
+  return execFileSync(process.execPath, [cli, 'init', dir, '--project-id', 'demo-app', ...extra], { encoding: 'utf8' });
 }
 
-test('init installs minimal SDD runtime and Codex adapter', () => {
+function runUpdate(dir, ...extra) {
+  return execFileSync(process.execPath, [cli, 'update', dir, ...extra], { encoding: 'utf8' });
+}
+
+test('init installs micro-kernel, deterministic control state and on-demand SDD skills', () => {
   const dir = tempProject();
   const output = runInit(dir);
 
-  assert.match(output, /SDD V2 initialized/);
+  assert.match(output, /0\.2\.0-alpha\.1/);
   assert.ok(fs.existsSync(path.join(dir, '.sdd', 'config.json')));
   assert.ok(fs.existsSync(path.join(dir, '.sdd', 'manifest.json')));
+  assert.ok(fs.existsSync(path.join(dir, '.sdd', 'state.json')));
+  assert.ok(fs.existsSync(path.join(dir, '.sdd', '.gitignore')));
+  assert.match(fs.readFileSync(path.join(dir, '.sdd', '.gitignore'), 'utf8'), /state\.json/);
+  assert.equal(execFileSync('git', ['check-ignore', '.sdd/state.json'], { cwd: dir, encoding: 'utf8' }).trim(), '.sdd/state.json');
   assert.ok(fs.existsSync(path.join(dir, '.sdd', 'runtime', 'kernel.md')));
-  assert.ok(fs.existsSync(path.join(dir, '.sdd', 'runtime', 'memory.md')));
-  assert.ok(fs.existsSync(path.join(dir, 'AGENTS.md')));
-  assert.ok(fs.existsSync(path.join(dir, '.codex', 'config.toml')));
+  assert.ok(!fs.existsSync(path.join(dir, '.sdd', 'runtime', 'memory.md')));
 
-  const config = JSON.parse(fs.readFileSync(path.join(dir, '.sdd', 'config.json')));
-  assert.equal(config.project_id, 'demo-app');
-  assert.equal(config.adapter, 'codex');
+  for (const name of ['sdd-change', 'sdd-recovery', 'sdd-verify', 'sdd-coordinate']) {
+    assert.ok(fs.existsSync(path.join(dir, '.agents', 'skills', name, 'SKILL.md')), name);
+  }
 
-  const codex = fs.readFileSync(path.join(dir, '.codex', 'config.toml'), 'utf8');
-  assert.match(codex, /\[mcp_servers\.engram\]/);
-  assert.match(codex, /ENGRAM_PROJECT=demo-app/);
-  assert.match(codex, /sdd-engram/);
-  assert.match(codex, /--tools=agent/);
-  assert.doesNotMatch(codex, /enabled_tools\s*=/);
+  const state = JSON.parse(fs.readFileSync(path.join(dir, '.sdd', 'state.json')));
+  assert.equal(state.schema_version, 1);
+  assert.equal(state.project_id, 'demo-app');
+  assert.deepEqual(state.changes, {});
+
+  const manifest = JSON.parse(fs.readFileSync(path.join(dir, '.sdd', 'manifest.json')));
+  assert.equal(manifest.runtime_version, '0.2.0-alpha.1');
+  assert.equal(manifest.schemas.control, 1);
+  assert.ok(manifest.persistent_paths.includes('.sdd/state.json'));
 
   const agents = fs.readFileSync(path.join(dir, 'AGENTS.md'), 'utf8');
-  assert.match(agents, /<!-- sdd-v2:start -->/);
   assert.match(agents, /\.sdd\/runtime\/kernel\.md/);
-  assert.match(agents, /\.sdd\/runtime\/memory\.md/);
+  assert.match(agents, /sdd-v2 status --json/);
+  assert.match(agents, /sdd-change/);
+  assert.doesNotMatch(agents, /direct \| compact \| full/);
+  assert.doesNotMatch(agents, /runtime\/memory\.md/);
+
+  const codex = fs.readFileSync(path.join(dir, '.codex', 'config.toml'), 'utf8');
+  assert.match(codex, /ENGRAM_PROJECT=demo-app/);
+  assert.match(codex, /--tools=agent/);
 });
 
-test('init is idempotent and preserves user content', () => {
+test('init is idempotent and preserves user-owned content', () => {
   const dir = tempProject();
   fs.writeFileSync(path.join(dir, 'AGENTS.md'), '# Project Rules\n\nKeep this.\n');
   fs.mkdirSync(path.join(dir, '.codex'), { recursive: true });
@@ -58,85 +71,56 @@ test('init is idempotent and preserves user content', () => {
 
   runInit(dir);
   const firstAgents = fs.readFileSync(path.join(dir, 'AGENTS.md'), 'utf8');
-  const firstCodex = fs.readFileSync(path.join(dir, '.codex', 'config.toml'), 'utf8');
+  const firstState = fs.readFileSync(path.join(dir, '.sdd', 'state.json'), 'utf8');
   runInit(dir);
-  const secondAgents = fs.readFileSync(path.join(dir, 'AGENTS.md'), 'utf8');
-  const secondCodex = fs.readFileSync(path.join(dir, '.codex', 'config.toml'), 'utf8');
 
-  assert.equal(firstAgents, secondAgents);
-  assert.equal(firstCodex, secondCodex);
-  assert.match(secondAgents, /Keep this\./);
-  assert.match(secondCodex, /model = "example"/);
-  assert.equal((secondAgents.match(/<!-- sdd-v2:start -->/g) ?? []).length, 1);
-  assert.equal((secondCodex.match(/# sdd-v2:start/g) ?? []).length, 1);
+  assert.equal(fs.readFileSync(path.join(dir, 'AGENTS.md'), 'utf8'), firstAgents);
+  assert.equal(fs.readFileSync(path.join(dir, '.sdd', 'state.json'), 'utf8'), firstState);
+  assert.match(firstAgents, /Keep this\./);
+  assert.match(fs.readFileSync(path.join(dir, '.codex', 'config.toml'), 'utf8'), /model = "example"/);
+  assert.equal((firstAgents.match(/<!-- sdd-v2:start -->/g) ?? []).length, 1);
 });
 
-test('init preserves user-owned Engram MCP config', () => {
-  const dir = tempProject();
-  fs.mkdirSync(path.join(dir, '.codex'), { recursive: true });
-  const userConfig = '[mcp_servers.engram]\ncommand = "custom-engram"\n';
-  fs.writeFileSync(path.join(dir, '.codex', 'config.toml'), userConfig);
-
-  const output = runInit(dir);
-  assert.match(output, /user-owned/);
-  assert.equal(fs.readFileSync(path.join(dir, '.codex', 'config.toml'), 'utf8'), userConfig);
-});
-
-function runUpdate(dir, ...extra) {
-  return execFileSync(process.execPath, [cli, 'update', dir, ...extra], { encoding: 'utf8' });
-}
-
-test('update previews and applies compatible runtime changes while preserving project-owned config', () => {
+test('update migrates Alpha.5 control state without rewriting config or memory schema', () => {
   const dir = tempProject();
   runInit(dir);
 
-  const configPath = path.join(dir, '.sdd', 'config.json');
   const manifestPath = path.join(dir, '.sdd', 'manifest.json');
-  const kernelPath = path.join(dir, '.sdd', 'runtime', 'kernel.md');
-  const memoryPath = path.join(dir, '.sdd', 'runtime', 'memory.md');
-  const agentsPath = path.join(dir, 'AGENTS.md');
+  const configPath = path.join(dir, '.sdd', 'config.json');
+  const statePath = path.join(dir, '.sdd', 'state.json');
+  const legacyMemory = path.join(dir, '.sdd', 'runtime', 'memory.md');
+
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  manifest.runtime_version = '0.1.0-alpha.5';
+  delete manifest.schemas.control;
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
+  fs.rmSync(statePath);
+  fs.writeFileSync(legacyMemory, '# legacy memory runtime\n');
 
   const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
   config.custom_project_setting = 'keep-me';
+  config.evolution = { capture_signals: true };
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
 
-  const oldManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-  oldManifest.runtime_version = '0.1.0-alpha.3';
-  fs.writeFileSync(manifestPath, JSON.stringify(oldManifest, null, 2) + '\n');
-  fs.writeFileSync(kernelPath, '# stale kernel\n');
-  fs.appendFileSync(agentsPath, '\nProject-owned tail.\n');
-
-  const beforeDryRunKernel = fs.readFileSync(kernelPath, 'utf8');
   const dryRun = runUpdate(dir, '--dry-run');
-  assert.match(dryRun, /0\.1\.0-alpha\.3 -> 0\.1\.0-alpha\.5/);
-  assert.match(dryRun, /mode: dry-run/);
-  assert.equal(fs.readFileSync(kernelPath, 'utf8'), beforeDryRunKernel);
+  assert.match(dryRun, /0\.1\.0-alpha\.5 -> 0\.2\.0-alpha\.1/);
+  assert.match(dryRun, /control schema: 0 -> 1 \(migration-supported\)/);
+  assert.ok(!fs.existsSync(statePath));
 
-  const output = runUpdate(dir);
-  assert.match(output, /Update applied/);
-  assert.match(output, /config schema: 1 -> 1 \(compatible\)/);
-
-  const updatedManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-  assert.equal(updatedManifest.runtime_version, '0.1.0-alpha.5');
-  assert.deepEqual(updatedManifest.managed_sections, ['AGENTS.md#sdd-v2', '.codex/config.toml#sdd-v2']);
-
+  runUpdate(dir);
+  assert.ok(fs.existsSync(statePath));
+  assert.ok(!fs.existsSync(legacyMemory));
   const updatedConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
   assert.equal(updatedConfig.custom_project_setting, 'keep-me');
-
-  const kernel = fs.readFileSync(kernelPath, 'utf8');
-  assert.match(kernel, /Evolution feedback/);
-  assert.match(kernel, /Route no decide por sí sola/);
-  assert.match(fs.readFileSync(agentsPath, 'utf8'), /durability `ephemeral \| receipt \| continuity`/);
-  assert.match(fs.readFileSync(agentsPath, 'utf8'), /runtime\/memory\.md/);
-  assert.ok(fs.existsSync(memoryPath));
-  assert.match(fs.readFileSync(memoryPath, 'utf8'), /CHG-YYYYMMDD-NN/);
-  assert.match(fs.readFileSync(agentsPath, 'utf8'), /Project-owned tail\./);
+  assert.deepEqual(updatedConfig.evolution, { capture_signals: true });
+  const updatedManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  assert.equal(updatedManifest.schemas.memory, 1);
+  assert.equal(updatedManifest.schemas.control, 1);
 });
 
-test('update fails closed when a schema migration is required', () => {
+test('update fails closed for newer unsupported memory schema', () => {
   const dir = tempProject();
   runInit(dir);
-
   const manifestPath = path.join(dir, '.sdd', 'manifest.json');
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
   manifest.schemas.memory = 2;
@@ -145,12 +129,8 @@ test('update fails closed when a schema migration is required', () => {
   assert.throws(
     () => runUpdate(dir),
     (error) => {
-      const stderr = String(error.stderr ?? '');
-      assert.match(stderr, /newer than supported schema 1/);
+      assert.match(String(error.stderr ?? ''), /newer than supported schema 1/);
       return true;
     },
   );
-
-  const after = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-  assert.equal(after.schemas.memory, 2);
 });

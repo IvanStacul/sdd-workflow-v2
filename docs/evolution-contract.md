@@ -8,6 +8,8 @@ Capturar fricción real de ejecución, distinguir ruido local de problemas reusa
 
 El Evolution Loop es transversal. **No es una fase** y no bloquea el trabajo normal salvo que la propia falla del workflow impida continuar con seguridad.
 
+**Rebaseline 0.2.0-alpha.1:** Evolution tampoco es un chequeo always-on del micro-kernel. Se activa condicionalmente ante fricción de workflow de señal alta; la captura sistemática de WorkflowSignal sigue sin evidencia dogfood suficiente.
+
 ## Loop
 
 ```text

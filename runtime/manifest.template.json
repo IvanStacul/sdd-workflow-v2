@@ -1,14 +1,21 @@
 {
   "schema_version": 1,
   "managed_by": "sdd-v2",
-  "runtime_version": "0.1.0-alpha.5",
+  "runtime_version": "0.2.0-alpha.1",
   "schemas": {
     "config": 1,
-    "memory": 1
+    "memory": 1,
+    "control": 1
   },
   "managed_paths": [
-    ".sdd/runtime",
-    ".sdd/manifest.json"
+    ".sdd/runtime/kernel.md",
+    ".sdd/manifest.json",
+    ".sdd/.gitignore",
+    ".agents/skills/sdd-*"
+  ],
+  "persistent_paths": [
+    ".sdd/config.json",
+    ".sdd/state.json"
   ],
   "managed_sections": [
     "AGENTS.md#sdd-v2",

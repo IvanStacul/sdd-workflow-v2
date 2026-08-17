@@ -7,51 +7,42 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 
-test('critical design invariants are projected into runtime', () => {
-  const changeModel = read('docs/change-model.md');
-  const memoryContract = read('docs/memory-contract.md');
+test('always-loaded kernel is small and delegates conditional semantics to skills', () => {
   const kernel = read('runtime/kernel.md');
-  const memory = read('runtime/memory.md');
-
-  assert.match(changeModel, /CHG-YYYYMMDD-NN/);
-  assert.match(memory, /CHG-YYYYMMDD-NN/);
-  assert.match(memory, /nunca uses el slug como Change ID/i);
-
-  assert.match(memoryContract, /receipt/i);
-  assert.match(memoryContract, /continuity/i);
-  assert.match(kernel, /receipt/);
-  assert.match(kernel, /continuity/);
-  assert.match(memory, /Status: closed/);
-  assert.match(memory, /Status: open/);
-
-  assert.match(memory, /## WorkUnit/);
-  assert.match(memory, /Project Knowledge/);
-  assert.match(memory, /WorkflowSignal/);
-  assert.match(memory, /capture_prompt=false/);
-  assert.match(memory, /STOP RETRIEVAL(?:\/PLANNING)? -> ACT/);
+  assert.ok(kernel.length < 5000, `kernel too large: ${kernel.length}`);
+  assert.match(kernel, /Frontier first/);
+  assert.match(kernel, /Minimum sufficient change/);
+  assert.match(kernel, /Evidence before completed closure/);
+  assert.match(kernel, /Progressive disclosure/);
+  assert.match(kernel, /sdd-change/);
+  assert.match(kernel, /sdd-recovery/);
+  assert.match(kernel, /sdd-verify/);
+  assert.doesNotMatch(kernel, /direct.*compact.*full/i);
+  assert.doesNotMatch(kernel, /WorkflowSignal/);
+  assert.ok(!fs.existsSync(path.join(root, 'runtime', 'memory.md')));
 });
 
-test('runtime keeps memory conditional and Engram value-driven', () => {
-  const kernel = read('runtime/kernel.md');
-  const adapter = read('adapters/codex.mjs');
+test('conditional concepts live in dedicated protocol skills', () => {
+  const change = read('skills/sdd-change/SKILL.md');
+  const recovery = read('skills/sdd-recovery/SKILL.md');
+  const verify = read('skills/sdd-verify/SKILL.md');
+  const coordinate = read('skills/sdd-coordinate/SKILL.md');
 
-  assert.match(kernel, /Cargarlo solo/);
-  assert.match(adapter, /memory\.md` only when durable SDD memory or recovery is required/);
-  assert.match(adapter, /Engram usage is value-driven/);
+  assert.match(change, /CHG-YYYYMMDD-NN/);
+  assert.match(change, /receipt/);
+  assert.match(change, /continuity/);
+  assert.match(recovery, /sdd-v2 status --json/);
+  assert.match(recovery, /STOP RETRIEVAL -> ACT/);
+  assert.match(verify, /rejects completed closure without evidence/i);
+  assert.match(coordinate, /Materialize just-in-time/i);
+});
+
+test('Codex adapter is bootstrap wiring rather than a second kernel', () => {
+  const adapter = read('adapters/codex.mjs');
+  assert.match(adapter, /small control plane/);
+  assert.match(adapter, /host-native skill discovery/);
+  assert.match(adapter, /sdd-v2 status --json/);
+  assert.doesNotMatch(adapter, /direct \| compact \| full/);
+  assert.doesNotMatch(adapter, /runtime\/memory\.md/);
   assert.match(adapter, /--tools=agent/);
-  assert.doesNotMatch(adapter, /enabled_tools\s*=/);
-});
-
-
-test('recovery fast-path and session lifecycle stay optional', () => {
-  const kernel = read('runtime/kernel.md');
-  const memory = read('runtime/memory.md');
-  const adapter = read('adapters/codex.mjs');
-
-  assert.match(kernel, /Recovery fast-path/);
-  assert.match(kernel, /no reconstruir la sesión ni replanificar el Change/i);
-  assert.match(memory, /session_summary.*opcional/i);
-  assert.match(memory, /No iniciar, re-asociar ni reintentar una sesión/i);
-  assert.match(memory, /fricción de entorno\/tooling reaparece/i);
-  assert.match(adapter, /session lifecycle\/session summaries are optional complements/i);
 });

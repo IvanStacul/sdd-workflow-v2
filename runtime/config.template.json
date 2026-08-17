@@ -5,9 +5,5 @@
     "transport": "docker-mcp",
     "container": "sdd-engram"
   },
-  "approval": "material-decisions",
-  "evolution": {
-    "capture_signals": true,
-    "surface": "material-only"
-  }
+  "approval": "material-decisions"
 }

@@ -1,135 +1,76 @@
-# SDD V2 — Alpha Layout v0
+# SDD V2 — Rebaseline Layout v1
 
 ## Objetivo
 
-Definir la mínima frontera entre el repo que desarrolla SDD, la infraestructura opcional y lo que se instala dentro de un proyecto consumidor.
+Separar producto SDD, binding por proyecto, memoria y capacidades nativas del harness sin volver al workflow copiado completo de V1.
 
-## Repo de desarrollo SDD
+## Repo SDD
 
 ```text
 sdd-workflow-v2/
-├── docs/          contratos y decisiones de diseño; no se cargan en ejecución normal
-├── runtime/       piezas canónicas distribuibles
-├── infra/         servicios auxiliares opcionales (Engram Docker)
-└── experiments/   pruebas descartables; nunca se instalan en proyectos
+├── cli/          control plane CLI
+├── lib/          control state + resolvers
+├── adapters/     wiring por host
+├── runtime/      micro-kernel distribuible
+├── skills/       protocols SDD reutilizables/on-demand
+├── docs/         design intent/rationale
+├── infra/        servicios auxiliares, hoy Engram Docker
+├── tests/        behavior + projection tests
+└── experiments/  spikes no canónicos
 ```
 
-## Proyecto consumidor — Alpha
+## Proyecto consumidor
 
 ```text
 my-app/
 ├── .sdd/
-│   ├── manifest.json       # managed; versión + schemas
-│   ├── config.json         # user-owned; memoria/autonomía/evolution
-│   └── runtime/
-│       ├── kernel.md        # managed; always-loaded minimal loop
-│       └── memory.md        # managed; conditional durable-memory projection
-├── .codex/
-│   └── config.toml          # adapter Codex Alpha
-├── AGENTS.md                # bloque SDD V2 administrado + contenido del proyecto
-└── código del proyecto
+│   ├── config.json
+│   ├── manifest.json
+│   ├── state.json
+│   └── runtime/kernel.md
+├── .agents/skills/sdd-*/SKILL.md
+├── AGENTS.md
+└── .codex/config.toml
 ```
 
-### `manifest.json`
+### Ownership
 
-Se genera desde `runtime/manifest.template.json`.
+| Path | Owner | Update behavior |
+|---|---|---|
+| `.sdd/config.json` | project/user | preservar; migrar explícitamente si schema cambia |
+| `.sdd/state.json` | SDD control plane, persistent | nunca reemplazar por update; migrar schema |
+| `.sdd/manifest.json` | SDD | reemplazable |
+| `.sdd/runtime/kernel.md` | SDD | reemplazable |
+| `.agents/skills/sdd-*` | SDD | reemplazables por versión instalada |
+| `AGENTS.md#sdd-v2` | SDD section | upsert section only |
+| `.codex/config.toml#sdd-v2` | SDD section | upsert section only |
 
-Responsabilidades:
+## Control state vs memory
 
-- identificar versión de runtime instalada;
-- identificar schemas esperados;
-- declarar paths enteramente managed por SDD;
-- permitir que update/migration hagan preflight barato.
+`.sdd/state.json` no reemplaza Engram ni contiene transcript/historia extensa. Su objetivo es hacer deterministas las operaciones de control que no deberían depender de FTS o de la inteligencia del modelo:
 
-No es un contrato con hashes encadenados ni un log de ejecución.
+- Change IDs;
+- open/closed lifecycle;
+- canonical `topic_key`;
+- optional bound memory reference;
+- closure reason/evidence summary/ref.
 
-### `config.json`
+Engram conserva contexto durable rico e histórico: Change content adicional, Decisions, Evidence records, Project Knowledge y otros records que demuestren valor.
 
-Se genera desde `runtime/config.template.json` y es editable por el usuario/proyecto.
+## Skills
 
-En Alpha controla únicamente decisiones que ya existen conceptualmente:
+SDD usa `.agents/skills` como binding portable inicial para los hosts que comparten Agent Skills. El producto fuente mantiene las skills en `skills/`.
 
-- memory provider/transport;
-- approval mode;
-- capture/surfacing de evolution signals.
-
-No agregar switches hasta que cambien comportamiento real.
-
-### `.sdd/runtime/`
-
-Managed. Puede reemplazarse durante `sdd update` si el cambio es compatible o después de una migración exitosa.
-
-Contiene una proyección runtime deliberadamente menor que `docs/*`:
-
-- `kernel.md`: contrato mínimo always-loaded;
-- `memory.md`: se carga solo para recovery o escritura durable SDD.
-
-`docs/*` conserva rationale/modelos completos para desarrollar SDD; el agente de producto no debe cargarlos en ejecución normal. Todo invariante conceptual que sea obligatorio durante ejecución debe tener una proyección explícita en `runtime/*` y tests que eviten drift.
-
-## Fuera del proyecto consumidor
-
-Engram corre como servicio local compartido:
-
-```text
-Docker Desktop / Docker Engine
-└── sdd-engram
-    └── volume sdd-engram-data
-```
-
-Cada proyecto recibe un `project-id` estable y los adapters lo pasan al MCP de Engram. La memoria no se copia dentro de `.sdd/`.
-
-## Update/Migration
-
-```text
-read .sdd/manifest.json
-  -> compare runtime/config/memory versions
-  -> classify compatibility
-  -> preview managed changes
-  -> migrate only if required
-  -> replace managed runtime
-  -> verify
-  -> update manifest
-```
-
-`config.json` no se sobreescribe completo durante update. Cualquier migración de config debe preservar valores del usuario.
-
-## Incluido en Alpha actual
-
-- CLI `sdd-v2`;
-- `sdd-v2 init`;
-- adapter Codex;
-- instalación idempotente de `.sdd/`, `AGENTS.md` y `.codex/config.toml`;
-- Engram Docker MCP como backend de memoria.
-
-## Incluido desde Alpha.2
-
-- `sdd-v2 update [target] [--dry-run]` para updates compatibles;
-- preview de runtime/config/memory schemas antes de mutar;
-- preservación de `.sdd/config.json` y contenido user-owned;
-- rechazo fail-closed cuando aparece un schema que requiere migración no implementada.
-
-## Incluido desde Alpha.3
-
-- planning route (`direct | compact | full`) separada de durability (`ephemeral | receipt | continuity`);
-- Change Receipt mínimo para trabajo material completado sin planificación previa;
-- continuity obligatoria ante trabajo explícitamente pendiente/handoff;
-- Alpha.3 inicialmente limitó Engram a cuatro tools del hot path; esta optimización quedó supersedida en Alpha.4 tras el dogfood;
-- lifecycle de sesión Engram queda fuera del hot path por defecto, especialmente bajo Docker MCP.
+Esto es una decisión de distribución del Alpha rebaselined, no una obligación conceptual de copiar skills por repo para siempre. Adapters futuros pueden proyectarlas a scope global/native cuando el host permita versionado y aislamiento suficientes.
 
 ## No incluido todavía
 
-- migradores concretos;
-- adapters adicionales;
-- scheduler/parallel executor propio;
-- exporter final.
+- OpenCode adapter productivo;
+- Memory Contract completamente encapsulado detrás de un MCP/SDK SDD propio;
+- migración/normalización automática de todos los records legacy de Engram;
+- scheduler propio;
+- WorkUnit lifecycle CLI;
+- EvolutionSignal pipeline;
+- exporters finales.
 
-Estas piezas se agregan solo cuando el dogfooding o una necesidad real las justifique.
-
-## Incluido desde Alpha.4
-
-- `runtime/memory.md` como proyección operacional condicional de los contratos durables;
-- Change IDs canónicos `CHG-YYYYMMDD-NN` y shapes explícitos de receipt/continuity/WorkUnit/Decision/Evidence/Knowledge/Signal;
-- tests de runtime projection para detectar drift entre invariantes críticos de `docs/*` y `runtime/*`;
-- adapter Codex vuelve a exponer el perfil Engram `--tools=agent`: la selección de tools es value-driven, no un límite fijo por cantidad.
-
-La restricción de cuatro tools documentada en Alpha.3 queda supersedida por esta regla de Alpha.4.
+Esas piezas deben entrar por evidencia, no por completitud arquitectónica.

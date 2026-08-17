@@ -56,3 +56,10 @@ La revisión no debe producir otra iteración incremental por defecto. Debe prod
 6. plan de validación que pueda falsar las decisiones.
 
 Solo después se modifica el runtime.
+
+
+## Resultado del rebaseline — 0.2.0-alpha.1
+
+La primera implementación del rebaseline está documentada en `docs/rebaseline-architecture.md`. No se trata como Alpha.6 incremental: cambia la frontera de producto hacia micro-kernel + control state determinista + protocol skills on-demand.
+
+La siguiente decisión debe basarse en dogfood comparativo, no en agregar más instrucciones.

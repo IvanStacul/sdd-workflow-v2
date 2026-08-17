@@ -1,95 +1,123 @@
-# SDD Workflow V2 — Alpha
+# SDD Workflow V2 — Rebaseline Alpha
 
-V2 busca preservar trazabilidad, continuidad y calidad de Spec-Driven Development con menos ceremony y menor tiempo hasta acción.
+SDD V2 es un **control plane pequeño para desarrollo asistido por agentes**, no una cadena obligatoria de fases ni un reemplazo de Codex/OpenCode/u otros harnesses.
 
-## Estado
+Versión actual: **`0.2.0-alpha.1`**.
 
-Core conceptual disponible:
+## Qué cambió en el rebaseline
 
-- Change Model
-- WorkUnit Model
-- Router Contract
-- Execution Contract
-- Memory Contract
-- Evolution Contract
-- Runtime Kernel
+El dogfood de Alpha.1–Alpha.5 validó Engram + recovery cross-session, pero también mostró que demasiada semántica de SDD dependía de que el LLM interpretara correctamente `kernel.md`, `memory.md` y `AGENTS.md`.
 
-Alpha funcional inicial validado: `sdd-v2 init`, adapter Codex, Engram local en Docker y memoria persistente cross-session. Alpha.2 agregó `sdd-v2 update`; Alpha.3 separó planning route de durability; Alpha.4 proyectó el Memory Contract al runtime; Alpha.5 optimiza recovery/handoff sin reducir Engram por cuota de llamadas.
+`0.2.0-alpha.1` mueve las garantías más importantes a mecanismos explícitos:
+
+- micro-kernel always-loaded, sin `direct | compact | full` como taxonomía obligatoria;
+- `.sdd/state.json` como **control index determinista** para identidad/lifecycle de Changes;
+- CLI real para `status`, `change open/bind/close/list`;
+- cierre `completed` rechazado si no existe evidencia observada;
+- SDD protocols como Agent Skills on-demand: `sdd-change`, `sdd-recovery`, `sdd-verify`, `sdd-coordinate`;
+- fallback `sdd-v2 skills --json` que descubre solo metadata, no carga bodies;
+- `runtime/memory.md` deja de distribuirse: Change/recovery/verification ya no crecen dentro del kernel;
+- Engram continúa como backend durable para semántica/historia, Decisions, Evidence y Knowledge;
+- update desde Alpha.5 crea control schema `1` sin migrar/rewrite masivo de memory schema `1`.
 
 ## Principio operativo
 
 ```text
-request -> lightest safe route -> minimum context -> executable frontier
-        -> ACT -> proportional verify -> useful persistence -> next/close
+request
+  -> minimum relevant context
+  -> executable frontier
+  -> ACT
+  -> proportional evidence
+  -> persist only what must survive
+  -> close or continue
 ```
 
-No existe una cadena obligatoria proposal/spec/design/tasks/apply/verify.
+No existe una cadena obligatoria `proposal -> spec -> design -> tasks -> apply -> verify`.
 
-## Engram sin instalación local
+## Layout instalado
 
-```bash
-cd infra/engram
-cp .env.example .env
-docker compose up -d --build
+```text
+my-app/
+├── .sdd/
+│   ├── config.json          # project-owned
+│   ├── manifest.json        # managed version/schema metadata
+│   ├── state.json           # persistent machine control state
+│   └── runtime/
+│       └── kernel.md        # tiny always-loaded contract
+├── .agents/
+│   └── skills/
+│       ├── sdd-change/
+│       ├── sdd-recovery/
+│       ├── sdd-verify/
+│       └── sdd-coordinate/
+├── .codex/config.toml       # Codex adapter + Engram MCP
+└── AGENTS.md                # tiny SDD bootstrap section + project content
 ```
 
-Los agentes acceden por MCP usando `docker exec -i`; ver `infra/engram/README.md`.
-
-## Alpha validado
-
-Validado en Windows + Docker Desktop + Codex con Engram 1.20.0:
-
-- container healthy;
-- SQLite persistente tras restart/down-up;
-- `sdd-v2 init` instala `.sdd/` + adapter Codex;
-- Codex carga el kernel;
-- MCP conecta a Engram dentro de Docker;
-- `mem_save` persiste en el project-id correcto;
-- `mem_search` recupera la memoria;
-- una sesión nueva recupera memoria de la sesión anterior.
-
-
-## Source vs installed project
-
-Ver `docs/alpha-layout.md`. `experiments/` pertenece solo al desarrollo del framework y nunca se distribuye al proyecto consumidor.
-
-## Update compatible
+## CLI
 
 ```bash
+sdd-v2 init . --project-id my-project
 sdd-v2 update . --dry-run
 sdd-v2 update .
+
+sdd-v2 status . --json
+sdd-v2 skills . --json
+
+sdd-v2 change open ticket-tags --intent "Agregar tags a tickets"
+sdd-v2 change bind CHG-20260817-01 <engram-observation-ref>
+sdd-v2 change close CHG-20260817-01 --reason completed --evidence "15 tests / 76 assertions PASS"
 ```
 
-El update reemplaza únicamente runtime/bloques administrados y preserva `.sdd/config.json`. Si detecta un cambio de schema que todavía requiere migrador, se detiene sin mutar.
+`change close --reason completed` falla cerrado cuando no recibe `--evidence` o `--evidence-ref`.
 
-## Dogfooding
+## Engram
 
-La validación principal continúa sobre una app real desde cero. Ver `docs/dogfooding.md`.
+Engram 1.20.0 + Docker MCP fue validado durante el dogfood real. SDD conserva `.sdd/config.json.project_id` como identidad del proyecto y el adapter Codex configura:
 
+```text
+docker exec -i -e ENGRAM_PROJECT=<project-id> sdd-engram engram mcp --tools=agent
+```
 
-## Route y durability (Alpha.3)
+Engram session lifecycle/session summaries no son requisitos de continuidad SDD.
 
-SDD V2 separa dos decisiones que antes estaban acopladas:
+## Skills
 
-- **planning route** `direct | compact | full`: cuánta ceremonia/contrato hace falta antes de actuar;
-- **durability** `ephemeral | receipt | continuity`: qué contexto debe sobrevivir después del slice/sesión.
+SDD distingue:
 
-Esto permite que una feature clara se ejecute `direct` pero deje un receipt mínimo, mientras un cambio cosmético puede ser `direct + ephemeral`. Trabajo explícitamente pendiente para otra sesión siempre requiere `continuity`.
+- **SDD protocol skills**: controlan Change/recovery/verification/coordination;
+- **project/stack skills**: Laravel, React, testing, UI, etc.;
+- **Project Knowledge**: hechos reusables aprendidos del repo/entorno;
+- **repo context**: estado real del código.
 
-## Alpha.4 — runtime projection
+El host debe usar progressive disclosure. No se carga el catálogo completo para cada request.
 
-SDD V2 no carga los documentos extensos de `docs/` durante trabajo normal. Los invariantes ejecutables se proyectan a:
+## Update desde Alpha.5
 
-- `.sdd/runtime/kernel.md`: contrato mínimo always-loaded;
-- `.sdd/runtime/memory.md`: contrato condicional para recovery y memoria durable.
+`0.2.0-alpha.1` mantiene config schema `1` y memory schema `1`. Agrega control schema `1` con migración soportada:
 
-Esto mantiene bajo el costo de contexto sin depender de que el modelo infiera reglas que solo existen en documentación de diseño.
+```text
+Alpha.5
+  .sdd/runtime/kernel.md
+  .sdd/runtime/memory.md
+       |
+       v
+0.2.0-alpha.1
+  .sdd/runtime/kernel.md
+  .sdd/state.json
+  .agents/skills/sdd-*
+```
 
-## Alpha.5 — recovery/handoff refinement
+`runtime/memory.md` legacy se elimina porque pertenecía al runtime managed. `.sdd/config.json` se preserva completa, incluyendo claves legacy desconocidas.
 
-El dogfood Alpha.4 validó un Change `continuity` canónico y recuperación cross-session, pero mostró dos costos evitables:
+## Validación
 
-- una continuación podía seguir reconstruyendo/replanificando después de recuperar una `Frontier` ya ejecutable;
-- `session_summary` provocaba retries de lifecycle aun cuando el Change ya preservaba toda la continuidad necesaria.
+```bash
+npm test
+```
 
-Alpha.5 mantiene Engram value-driven, agrega un recovery fast-path y convierte session lifecycle/summaries en complementos estrictamente opcionales. También refuerza la promoción de fricción de entorno/tooling repetida a `SDD Knowledge`.
+La suite actual valida comportamiento de control state, lifecycle, closure gate, migration e skill discovery además de proyección runtime.
+
+## Próximo dogfood
+
+No agregar más reglas por defecto. El siguiente paso es comparar Alpha.5 vs rebaseline sobre los mismos casos: cosmetic, receipt material, continuity recovery, múltiples Changes abiertos, verification mutation y knowledge reuse. Ver `docs/rebaseline-architecture.md` y `docs/dogfooding.md`.

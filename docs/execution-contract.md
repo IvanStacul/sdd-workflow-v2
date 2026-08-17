@@ -126,6 +126,8 @@ ui-consistency  -> agrega restricciones locales de implementación
 
 Las policies son transversales. No crean fases nuevas.
 
+Rebaseline: las responsabilidades condicionales de SDD se distribuyen como Agent Skills/protocol modules (`sdd-change`, `sdd-recovery`, `sdd-verify`, `sdd-coordinate`). Skills de stack/proyecto se descubren por el mecanismo nativo del host o por un resolver de metadata; no se compacta/carga todo el catálogo por defecto.
+
 ## 9. Runtime form
 
 El executor no necesita leer este documento completo. La forma runtime debería caber aproximadamente en unas pocas reglas:

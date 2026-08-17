@@ -1,6 +1,26 @@
-# SDD V2 — Memory Contract v0.3
+# SDD V2 — Memory Contract v0.4
 
 > Estado: borrador experimental.
+> Rebaseline 0.2.0-alpha.1: el lifecycle/index operativo del Change se separa de la memoria semántica mediante `.sdd/state.json`; Engram conserva durable context/history. Esto reduce recovery probabilístico sin convertir el control state en otra capa documental.
+
+## Rebaseline boundary — control state vs durable memory
+
+El diseño anterior colocaba el snapshot canónico completo del Change detrás del Memory Contract. El dogfood validó recovery, pero la localización de Changes seguía dependiendo de búsqueda FTS/model reasoning.
+
+El rebaseline introduce dos responsabilidades distintas:
+
+```text
+SDD Control State (.sdd/state.json)
+  -> identity/lifecycle/index/memory reference/closure control
+
+Durable Memory (Engram via Memory Contract)
+  -> richer Change context, Decisions, Evidence, Knowledge, history
+```
+
+`state.json` no debe convertirse en proposal/spec/tasks/state.md. Su función es hacer deterministas operaciones de control pequeñas. La memoria sigue siendo selectiva y backend-agnostic en semántica.
+
+La siguiente iteración debe validar si este límite es suficiente antes de construir un MCP/SDK SDD que encapsule por completo Engram.
+
 > Objetivo: definir las capacidades mínimas que SDD V2 necesita de una memoria persistente sin convertir a Engram, Markdown o SQLite en parte del modelo de dominio.
 
 ## 1. Principio

@@ -11,16 +11,36 @@ La V1 permanece como baseline. La V2 se diseña separada para poder comparar amb
 
 ## Current snapshot
 
-- runtime: `0.1.0-alpha.5`;
-- schemas: config `1`, memory `1`;
+- runtime: `0.2.0-alpha.1` (rebaseline foundation);
+- schemas: config `1`, memory `1`, control `1`;
 - adapter activo: Codex;
 - memory: Engram 1.20.0 en Docker, validado real;
-- CLI: `sdd-v2 init`, `sdd-v2 update [--dry-run]`;
-- tests locales del framework: 8/8 PASS;
+- CLI: `init`, `update`, `status`, `skills`, `change open/bind/close/list`;
+- tests locales del framework: 12/12 PASS;
 - dogfood activo: `sdd-dogfood-helpdesk`; tickets + browser smoke + comments ya ejercitaron direct, continuidad y recovery;
 - cualquier mejora detectada se aplica al repo SDD y luego a la misma app con `sdd-v2 update`.
 - estado actual: **rebaseline requerido antes de Alpha.6**; no agregar nuevas reglas al runtime hasta auditar `docs -> runtime -> evidence`.
 - evidencia empírica normalizada: `docs/dogfood-evidence.md`; guía de revisión: `docs/rebaseline.md`.
+
+
+## Update — Rebaseline 0.2.0-alpha.1
+
+La auditoría `Design -> Runtime -> Implementation -> Evidence` mostró que Alpha.5 proyectaba demasiada semántica como prosa para que el LLM actuara como router, memory adapter y lifecycle controller.
+
+Se implementa una fundación nueva:
+
+- SDD se define como control plane portable sobre harnesses existentes;
+- micro-kernel always-loaded reducido a invariantes;
+- `direct | compact | full` deja de ser contrato obligatorio y queda experimental;
+- `.sdd/state.json` agrega control state determinista (`control_schema: 1`);
+- CLI materializa Change identity/lifecycle y rechaza cierre `completed` sin evidencia;
+- `sdd-change`, `sdd-recovery`, `sdd-verify`, `sdd-coordinate` son skills on-demand;
+- fallback `sdd-v2 skills --json` descubre metadata sin bulk-load de bodies;
+- `runtime/memory.md` se retira del runtime instalado;
+- Engram continúa como durable semantic/history memory y no se migra masivamente;
+- Evolution sale del hot kernel hasta obtener evidencia de valor.
+
+Documento de decisión: `docs/rebaseline-architecture.md`.
 
 ## Problemas observados en V1
 
@@ -32,6 +52,10 @@ La V1 permanece como baseline. La V2 se diseña separada para poder comparar amb
 - changes que crecen y generan subdivisiones difíciles de representar;
 - `interactive | auto` mezcla complejidad con intervención humana;
 - continuidad demasiado dependiente de archivos leídos repetidamente.
+
+## Historical design log
+
+Las secciones siguientes preservan decisiones y evolución previas. Cuando contradigan `Update — Rebaseline 0.2.0-alpha.1` o `docs/rebaseline-architecture.md`, el rebaseline vigente tiene prioridad.
 
 ## Dirección acordada
 
@@ -98,9 +122,9 @@ Memory Store
 - CodeGraph: proveedor opcional de contexto estructural.
 - Matt Pocock Skills / Superpowers / Spec Kit / OpenSpec: referencias para composición de skills y workflows.
 
-## Estado actual
+## Estado Alpha.5 (histórico)
 
-SDD V2 está en `0.1.0-alpha.5`. Init/update + Codex + Engram Docker están validados. Alpha.4 demostró continuity canónica y recovery cross-session; Alpha.5 agrega recovery fast-path, session summaries opcionales y promoción explícita de Knowledge reusable sin limitar Engram por cuota de llamadas.
+SDD V2 estaba en `0.1.0-alpha.5`. Init/update + Codex + Engram Docker están validados. Alpha.4 demostró continuity canónica y recovery cross-session; Alpha.5 agrega recovery fast-path, session summaries opcionales y promoción explícita de Knowledge reusable sin limitar Engram por cuota de llamadas.
 
 Artefactos de diseño actuales:
 

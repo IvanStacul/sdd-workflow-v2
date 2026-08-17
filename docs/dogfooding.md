@@ -185,3 +185,51 @@ Conclusiones:
 3. El Change abierto fue suficiente para reconstruir la frontera; session lifecycle no debe ser requisito ni generar retries por ceremonia.
 4. Recovery necesita fast-path: con `Frontier + Constraints` suficientes, inspeccionar código implicado y actuar; ampliar contexto solo por valor.
 5. Fricción repetida de Tailwind/`spawn EPERM` debe poder promoverse a Project Knowledge si vuelve a costar rework; no es por sí misma WorkflowSignal.
+
+
+## Rebaseline validation round — 0.2.0-alpha.1
+
+Antes de agregar nuevas reglas/features, comparar Alpha.5 y rebaseline sobre snapshots/request equivalentes.
+
+### V1 — cosmetic/local
+
+Esperado: sin Change, sin memory noise, edición/verificación rápida.
+
+### V2 — completed material receipt
+
+Caso comparable a prioridad. Esperado: Change canónico, sin WorkUnit retroactivo, cierre bloqueado hasta evidencia observada. En otra sesión debe poder explicarse intención/evidencia durable.
+
+### V3 — continuity recovery
+
+Backend ahora/UI después. Esperado: `sdd-v2 status --json` localiza el Change antes de FTS; Change/memory frontier permite inspección dirigida y ACT. Medir time-to-first-edit contra el caso Alpha.4.
+
+### V4 — multiple open Changes
+
+Crear múltiples Changes simultáneos y recuperar uno por slug/intención. El listado abierto debe ser determinista y no depender de `mem_search("SDD Change")` para enumeración.
+
+### V5 — verification mutation
+
+Introducir una implementación incompleta. El agente/CLI no debe cerrar `completed` sin evidencia; la evidencia seleccionada debe ejercer la acceptance observable, no solo un test incidental.
+
+### V6 — skill disclosure
+
+Agregar múltiples skills SDD/proyecto. Medir bodies realmente cargados y errores de selección. `sdd-v2 skills --json` debe devolver solo metadata.
+
+### V7 — knowledge reuse
+
+Repetir una fricción de tooling conocida. Medir si Project Knowledge evita el rework; no agregar promotion automática hasta demostrar el caso.
+
+### Métricas mínimas
+
+- time to first useful edit;
+- user interruptions y cuáles eran materiales;
+- context/tool calls antes de ACT;
+- durable records escritos vs luego reutilizados;
+- recovery precision/latency;
+- verification escapes;
+- skill bodies cargados;
+- rework.
+
+### Exit gate
+
+No avanzar a más semántica core hasta que el rebaseline mejore o preserve correctness/continuity con menor overhead en los escenarios anteriores.
