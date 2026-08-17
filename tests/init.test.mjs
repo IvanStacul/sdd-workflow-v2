@@ -77,3 +77,70 @@ test('init preserves user-owned Engram MCP config', () => {
   assert.match(output, /user-owned/);
   assert.equal(fs.readFileSync(path.join(dir, '.codex', 'config.toml'), 'utf8'), userConfig);
 });
+
+function runUpdate(dir, ...extra) {
+  return execFileSync(process.execPath, [cli, 'update', dir, ...extra], { encoding: 'utf8' });
+}
+
+test('update previews and applies compatible runtime changes while preserving project-owned config', () => {
+  const dir = tempProject();
+  runInit(dir);
+
+  const configPath = path.join(dir, '.sdd', 'config.json');
+  const manifestPath = path.join(dir, '.sdd', 'manifest.json');
+  const kernelPath = path.join(dir, '.sdd', 'runtime', 'kernel.md');
+  const agentsPath = path.join(dir, 'AGENTS.md');
+
+  const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  config.custom_project_setting = 'keep-me';
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
+
+  const oldManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  oldManifest.runtime_version = '0.1.0-alpha.1';
+  fs.writeFileSync(manifestPath, JSON.stringify(oldManifest, null, 2) + '\n');
+  fs.writeFileSync(kernelPath, '# stale kernel\n');
+  fs.appendFileSync(agentsPath, '\nProject-owned tail.\n');
+
+  const beforeDryRunKernel = fs.readFileSync(kernelPath, 'utf8');
+  const dryRun = runUpdate(dir, '--dry-run');
+  assert.match(dryRun, /0\.1\.0-alpha\.1 -> 0\.1\.0-alpha\.2/);
+  assert.match(dryRun, /mode: dry-run/);
+  assert.equal(fs.readFileSync(kernelPath, 'utf8'), beforeDryRunKernel);
+
+  const output = runUpdate(dir);
+  assert.match(output, /Update applied/);
+  assert.match(output, /config schema: 1 -> 1 \(compatible\)/);
+
+  const updatedManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  assert.equal(updatedManifest.runtime_version, '0.1.0-alpha.2');
+  assert.deepEqual(updatedManifest.managed_sections, ['AGENTS.md#sdd-v2', '.codex/config.toml#sdd-v2']);
+
+  const updatedConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  assert.equal(updatedConfig.custom_project_setting, 'keep-me');
+
+  const kernel = fs.readFileSync(kernelPath, 'utf8');
+  assert.match(kernel, /Evolution feedback/);
+  assert.match(fs.readFileSync(agentsPath, 'utf8'), /Project-owned tail\./);
+});
+
+test('update fails closed when a schema migration is required', () => {
+  const dir = tempProject();
+  runInit(dir);
+
+  const manifestPath = path.join(dir, '.sdd', 'manifest.json');
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  manifest.schemas.memory = 2;
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
+
+  assert.throws(
+    () => runUpdate(dir),
+    (error) => {
+      const stderr = String(error.stderr ?? '');
+      assert.match(stderr, /newer than supported schema 1/);
+      return true;
+    },
+  );
+
+  const after = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  assert.equal(after.schemas.memory, 2);
+});

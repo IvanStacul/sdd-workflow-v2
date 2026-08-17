@@ -27,7 +27,6 @@ my-app/
 │   └── config.toml          # adapter Codex Alpha
 ├── AGENTS.md                # bloque SDD V2 administrado + contenido del proyecto
 └── código del proyecto
-└── código del proyecto
 ```
 
 ### `manifest.json`
@@ -96,9 +95,15 @@ read .sdd/manifest.json
 - instalación idempotente de `.sdd/`, `AGENTS.md` y `.codex/config.toml`;
 - Engram Docker MCP como backend de memoria.
 
+## Incluido desde Alpha.2
+
+- `sdd-v2 update [target] [--dry-run]` para updates compatibles;
+- preview de runtime/config/memory schemas antes de mutar;
+- preservación de `.sdd/config.json` y contenido user-owned;
+- rechazo fail-closed cuando aparece un schema que requiere migración no implementada.
+
 ## No incluido todavía
 
-- `sdd update` ejecutable;
 - migradores concretos;
 - adapters adicionales;
 - scheduler/parallel executor propio;

@@ -109,6 +109,19 @@ Al terminar informar:
 
 No repetir un plan detallado de lo ya ejecutado.
 
+## 10. Evolution feedback
+
+Después de trabajo material o una fricción notable, hacer un chequeo silencioso:
+
+- ¿el workflow agregó costo evitable, perdió contexto, eligió mal la route, interrumpió sin decisión material o repitió un error prevenible?
+- si no hay aprendizaje reusable, no persistir nada;
+- si hay una señal de alto valor y `evolution.capture_signals` está activo, persistir un `WorkflowSignal` compacto en Engram;
+- registrar situación, costo/evidencia e hipótesis de mejora; no logs crudos;
+- no narrar la señal en la respuesta normal salvo que afecte materialmente el siguiente trabajo;
+- nunca modificar SDD silenciosamente durante trabajo de producto.
+
+Las signals son evidencia para mejorar versiones futuras de SDD; no son una retro obligatoria ni bloquean el siguiente frontier.
+
 ## Hard constraints
 
 - No phase graph obligatorio.

@@ -14,7 +14,7 @@ Core conceptual disponible:
 - Evolution Contract
 - Runtime Kernel
 
-Alpha funcional inicial validado: `sdd-v2 init`, adapter Codex, Engram local en Docker y memoria persistente cross-session. Próximo milestone: dogfooding sobre una aplicación real creada desde cero.
+Alpha funcional inicial validado: `sdd-v2 init`, adapter Codex, Engram local en Docker y memoria persistente cross-session. Alpha.2 agrega `sdd-v2 update` compatible para poder evolucionar el workflow durante dogfooding sin reinstalar proyectos.
 
 ## Principio operativo
 
@@ -52,3 +52,16 @@ Validado en Windows + Docker Desktop + Codex con Engram 1.20.0:
 ## Source vs installed project
 
 Ver `docs/alpha-layout.md`. `experiments/` pertenece solo al desarrollo del framework y nunca se distribuye al proyecto consumidor.
+
+## Update compatible
+
+```bash
+sdd-v2 update . --dry-run
+sdd-v2 update .
+```
+
+El update reemplaza únicamente runtime/bloques administrados y preserva `.sdd/config.json`. Si detecta un cambio de schema que todavía requiere migrador, se detiene sin mutar.
+
+## Dogfooding
+
+La validación principal continúa sobre una app real desde cero. Ver `docs/dogfooding.md`.

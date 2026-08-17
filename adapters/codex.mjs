@@ -17,6 +17,7 @@ Runtime rules:
 - verify proportionally before declaring completion;
 - use Engram memory only for continuity, material decisions/evidence, reusable knowledge, and workflow signals;
 - if Engram is unavailable, direct ephemeral work may continue safely; durable work must surface the degradation before closing;
+- after material work or notable friction, silently check for reusable SDD workflow friction; persist a compact signal when high-value, without interrupting normal product work;
 - do not modify SDD itself during product work; capture reusable workflow friction as a compact signal instead.
 
 Memory naming convention when Engram tools are available:

@@ -8,6 +8,18 @@ Diseñar una V2 del workflow SDD que conserve las garantías útiles de la V1 �
 
 La V1 permanece como baseline. La V2 se diseña separada para poder comparar ambas cuando exista una implementación suficientemente madura.
 
+
+## Current snapshot
+
+- runtime: `0.1.0-alpha.2`;
+- schemas: config `1`, memory `1`;
+- adapter activo: Codex;
+- memory: Engram 1.20.0 en Docker, validado real;
+- CLI: `sdd-v2 init`, `sdd-v2 update [--dry-run]`;
+- tests locales del framework: 5/5 PASS;
+- next: `sdd-dogfood-helpdesk` y primer frontier real de tickets;
+- cualquier mejora detectada se aplica al repo SDD y luego a la misma app con `sdd-v2 update`.
+
 ## Problemas observados en V1
 
 - demasiado proceso antes de empezar a implementar;
@@ -86,7 +98,7 @@ Memory Store
 
 ## Estado actual
 
-Estamos comenzando el diseño formal de V2.
+SDD V2 está en `0.1.0-alpha.2` y ya tiene un vertical slice funcional validado con Codex + Engram Docker: init, kernel, MCP, persistencia/recovery cross-session y update compatible. La validación principal pasa ahora a dogfooding sobre una aplicación real.
 
 Artefactos de diseño actuales:
 
@@ -296,3 +308,21 @@ Validación real completada por el usuario en Windows/Docker Desktop:
 - recuperación desde una sesión nueva de Codex funciona.
 
 Conclusión: M1b queda validado. El siguiente milestone es dogfooding sobre una app real creada desde cero. No agregar más infraestructura antes de que el uso real la justifique.
+
+
+## Update — Alpha.2 compatible update + dogfooding
+
+Después de validar en entorno real Codex -> MCP Docker -> Engram -> persistencia/recovery cross-session, el siguiente riesgo identificado fue evolutivo: el dogfood debe poder continuar sobre la misma app cuando SDD cambie.
+
+Se agrega:
+
+- `sdd-v2 update [target] [--dry-run]`;
+- preview explícito de runtime/config/memory compatibility antes de mutar;
+- update compatible que reemplaza `.sdd/runtime/**`, manifest y bloques SDD en `AGENTS.md`/`.codex/config.toml`;
+- `.sdd/config.json` permanece user-owned y no se reescribe;
+- schema más nuevo o migration-required no implementada => fail closed, sin cambios;
+- runtime `0.1.0-alpha.2`; schemas config/memory continúan en `1`;
+- `runtime/kernel.md` incorpora chequeo silencioso de Evolution después de trabajo material/fricción notable;
+- `docs/dogfooding.md` define el primer dogfood real, usando un helpdesk Laravel pequeño como challenge pool, no roadmap pre-materializado.
+
+Próximo paso operativo: crear `sdd-dogfood-helpdesk`, ejecutar `sdd-v2 init`, abrir una sesión Codex nueva y entregar solo el primer frontier de tickets. Las mejoras del workflow detectadas durante ese desarrollo se aplican al repo SDD, se versionan y se llevan a la misma app mediante `sdd-v2 update`.

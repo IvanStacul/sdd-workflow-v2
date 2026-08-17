@@ -1,12 +1,16 @@
 {
   "schema_version": 1,
   "managed_by": "sdd-v2",
-  "runtime_version": "0.1.0-alpha.1",
+  "runtime_version": "0.1.0-alpha.2",
   "schemas": {
     "config": 1,
     "memory": 1
   },
   "managed_paths": [
     ".sdd/runtime"
+  ],
+  "managed_sections": [
+    "AGENTS.md#sdd-v2",
+    ".codex/config.toml#sdd-v2"
   ]
 }
