@@ -108,7 +108,7 @@ test('update previews and applies compatible runtime changes while preserving pr
 
   const beforeDryRunKernel = fs.readFileSync(kernelPath, 'utf8');
   const dryRun = runUpdate(dir, '--dry-run');
-  assert.match(dryRun, /0\.1\.0-alpha\.3 -> 0\.1\.0-alpha\.4/);
+  assert.match(dryRun, /0\.1\.0-alpha\.3 -> 0\.1\.0-alpha\.5/);
   assert.match(dryRun, /mode: dry-run/);
   assert.equal(fs.readFileSync(kernelPath, 'utf8'), beforeDryRunKernel);
 
@@ -117,7 +117,7 @@ test('update previews and applies compatible runtime changes while preserving pr
   assert.match(output, /config schema: 1 -> 1 \(compatible\)/);
 
   const updatedManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-  assert.equal(updatedManifest.runtime_version, '0.1.0-alpha.4');
+  assert.equal(updatedManifest.runtime_version, '0.1.0-alpha.5');
   assert.deepEqual(updatedManifest.managed_sections, ['AGENTS.md#sdd-v2', '.codex/config.toml#sdd-v2']);
 
   const updatedConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));

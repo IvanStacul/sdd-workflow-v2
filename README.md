@@ -14,7 +14,7 @@ Core conceptual disponible:
 - Evolution Contract
 - Runtime Kernel
 
-Alpha funcional inicial validado: `sdd-v2 init`, adapter Codex, Engram local en Docker y memoria persistente cross-session. Alpha.2 agregó `sdd-v2 update`; Alpha.3 separa planning route de durability y reduce el surface de memoria del adapter Codex para el hot path.
+Alpha funcional inicial validado: `sdd-v2 init`, adapter Codex, Engram local en Docker y memoria persistente cross-session. Alpha.2 agregó `sdd-v2 update`; Alpha.3 separó planning route de durability; Alpha.4 proyectó el Memory Contract al runtime; Alpha.5 optimiza recovery/handoff sin reducir Engram por cuota de llamadas.
 
 ## Principio operativo
 
@@ -84,3 +84,12 @@ SDD V2 no carga los documentos extensos de `docs/` durante trabajo normal. Los i
 - `.sdd/runtime/memory.md`: contrato condicional para recovery y memoria durable.
 
 Esto mantiene bajo el costo de contexto sin depender de que el modelo infiera reglas que solo existen en documentación de diseño.
+
+## Alpha.5 — recovery/handoff refinement
+
+El dogfood Alpha.4 validó un Change `continuity` canónico y recuperación cross-session, pero mostró dos costos evitables:
+
+- una continuación podía seguir reconstruyendo/replanificando después de recuperar una `Frontier` ya ejecutable;
+- `session_summary` provocaba retries de lifecycle aun cuando el Change ya preservaba toda la continuidad necesaria.
+
+Alpha.5 mantiene Engram value-driven, agrega un recovery fast-path y convierte session lifecycle/summaries en complementos estrictamente opcionales. También refuerza la promoción de fricción de entorno/tooling repetida a `SDD Knowledge`.

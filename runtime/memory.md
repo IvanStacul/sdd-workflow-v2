@@ -104,7 +104,7 @@ type:      config | pattern | discovery
 body:      Context/Symptom + Cause si se conoce + Action + Applies when
 ```
 
-Error local/retryable se resuelve y olvida; se promueve cuando reutilizarlo tiene valor claro.
+Error local/retryable se resuelve y olvida; se promueve cuando reutilizarlo tiene valor claro. Si una fricción de entorno/tooling reaparece en otra verificación/sesión, o ya costó reintentos significativos y tiene recovery estable, favorecer promoción a `SDD Knowledge` para evitar redescubrimiento.
 
 ## WorkflowSignal
 
@@ -119,6 +119,16 @@ body:      situación + costo/evidencia + hipótesis
 
 Nunca modificar SDD silenciosamente durante trabajo de producto.
 
+## Session lifecycle y summaries
+
+La continuidad SDD no depende de una sesión Engram registrada.
+
+- El Change es la fuente canónica de `completed/frontier/constraints/evidence`.
+- `session_summary` es opcional y solo se usa si existe una sesión Engram válida **y** aporta contexto adicional útil que no justifique inflar el Change.
+- No iniciar, re-asociar ni reintentar una sesión solo para poder guardar un summary.
+- Si `session_summary` falla pero el Change requerido quedó confirmado, el handoff SDD puede cerrar; reportar el fallo solo si afecta una necesidad real del usuario/workflow.
+- Nunca afirmar que un summary fue guardado si Engram no lo confirmó.
+
 ## Recovery por valor
 
 Default simple:
@@ -127,8 +137,10 @@ Default simple:
 project si hace falta
  -> mem_search("SDD Change ...")
  -> mem_get_observation(Change abierto relevante)
- -> Decision/Knowledge aplicable solo si puede cambiar la siguiente acción
- -> STOP RETRIEVAL -> ACT
+ -> ¿Frontier + Constraints suficientes?
+      sí -> inspección de código dirigida -> STOP RETRIEVAL/PLANNING -> ACT
+      no -> Decision/Knowledge/context adicional que pueda cambiar la acción
+ -> ACT cuando la frontier sea segura
 ```
 
 Es un default, no una limitación de Engram. Usa `mem_context`, timeline, session summaries u otras tools cuando reduzcan ambigüedad/rework o mejoren calidad. **No optimices por número de llamadas**; detén retrieval cuando contexto adicional ya no pueda cambiar materialmente la frontier/decisión. Nunca bulk-load todo por defecto.

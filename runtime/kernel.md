@@ -60,6 +60,8 @@ Recuperar solo lo necesario para el slice actual:
 
 En una continuación, cargar `runtime/memory.md` y aplicar recuperación progresiva. La ruta simple es project si hace falta -> Change abierto relevante -> contexto material -> **STOP RETRIEVAL -> ACT**. Herramientas adicionales de Engram son válidas cuando aportan contexto que pueda cambiar la frontier/decisión; no optimizar por número de llamadas.
 
+**Recovery fast-path:** si el Change abierto ya contiene una `Frontier` concreta y `Constraints` suficientes, no reconstruir la sesión ni replanificar el Change. Hacer una inspección dirigida del código implicado y actuar. Expandir memoria/historia solo si aparece una contradicción, ambigüedad o decisión que pueda cambiar materialmente la implementación.
+
 ## 5. Frontier
 
 - No planificar el Change completo.
@@ -102,7 +104,7 @@ No persistir plan narrativo, HOW local, retries rutinarios, output completo, ver
 
 Con Engram disponible, preferir MCP directo. La forma exacta de Change IDs, receipts, continuity, WorkUnits, Decisions, Evidence, Knowledge, Signals y recovery vive en `runtime/memory.md`; no inventar una estructura alternativa. En transporte `docker-mcp`, el `project_id` de `.sdd/config.json` es la identidad SDD.
 
-Si continuidad requerida falla al persistir, no declarar cierre silenciosamente.
+Si continuidad requerida falla al persistir, no declarar cierre silenciosamente. El Change abierto/cerrado es la continuidad canónica; el lifecycle de sesiones Engram y `session_summary` son complementarios, nunca prerequisito de cierre.
 
 ## 9. Parallelism
 

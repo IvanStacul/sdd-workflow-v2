@@ -11,14 +11,16 @@ La V1 permanece como baseline. La V2 se diseña separada para poder comparar amb
 
 ## Current snapshot
 
-- runtime: `0.1.0-alpha.3`;
+- runtime: `0.1.0-alpha.5`;
 - schemas: config `1`, memory `1`;
 - adapter activo: Codex;
 - memory: Engram 1.20.0 en Docker, validado real;
 - CLI: `sdd-v2 init`, `sdd-v2 update [--dry-run]`;
-- tests locales del framework: 5/5 PASS;
+- tests locales del framework: 8/8 PASS;
 - dogfood activo: `sdd-dogfood-helpdesk`; tickets + browser smoke + comments ya ejercitaron direct, continuidad y recovery;
 - cualquier mejora detectada se aplica al repo SDD y luego a la misma app con `sdd-v2 update`.
+- estado actual: **rebaseline requerido antes de Alpha.6**; no agregar nuevas reglas al runtime hasta auditar `docs -> runtime -> evidence`.
+- evidencia empírica normalizada: `docs/dogfood-evidence.md`; guía de revisión: `docs/rebaseline.md`.
 
 ## Problemas observados en V1
 
@@ -98,7 +100,7 @@ Memory Store
 
 ## Estado actual
 
-SDD V2 está en `0.1.0-alpha.3`. Init/update + Codex + Engram Docker están validados y el dogfood real del helpdesk ya produjo el primer refinamiento empírico: planning route y durability quedan separadas; continuity/recovery funciona pero debe reducir llamadas de memoria antes de ACT.
+SDD V2 está en `0.1.0-alpha.5`. Init/update + Codex + Engram Docker están validados. Alpha.4 demostró continuity canónica y recovery cross-session; Alpha.5 agrega recovery fast-path, session summaries opcionales y promoción explícita de Knowledge reusable sin limitar Engram por cuota de llamadas.
 
 Artefactos de diseño actuales:
 
@@ -390,3 +392,28 @@ Proyección operacional incluida:
 Engram: se revierte la restricción Alpha.3 a cuatro tools. El adapter Codex vuelve a exponer el perfil `engram mcp --tools=agent`; no se optimiza por número de llamadas sino por valor de contexto/recovery. Session/context/timeline pueden usarse cuando aportan valor, sin sustituir el Change canónico. Bajo Docker sigue prohibido depender de host absolute paths como `mem_session_start.directory`.
 
 Runtime `0.1.0-alpha.4`; schemas config/memory permanecen en 1, por lo que `sdd-v2 update` desde Alpha.3 es compatible.
+
+## Update — Alpha.5: recovery fast-path + optional session lifecycle
+
+Dogfood Alpha.4 sobre tags validó:
+
+- route `direct` + durability `continuity`;
+- Change canónico `CHG-20260817-01` abierto, luego recuperado y cerrado desde una sesión nueva;
+- recovery correcto sin repetir el prompt/scope;
+- runtime/memory projection efectivamente consumida.
+
+Fricciones observadas:
+
+- ~40s recovery + ~60s adicionales de frontier/reasoning antes de editar aun cuando el Change ya contenía una frontera concreta;
+- `mem_session_summary` intentó dos veces trabajar con session ids no registrados, generando retries sin aportar continuidad adicional;
+- `spawn EPERM`/Tailwind native reaparece como fricción de entorno y es candidata a Project Knowledge cuando su recovery sea reusable.
+
+Alpha.5:
+
+- `Recovery fast-path`: Change abierto con `Frontier + Constraints` suficientes -> inspección dirigida del código -> ACT, sin reconstruir/replanificar la sesión;
+- session lifecycle y `session_summary` son opcionales; nunca se crean/reintentan solo para satisfacer SDD si el Change canónico ya está confirmado;
+- fallo de summary no bloquea handoff cuando continuidad canónica está persistida;
+- promoción explícita de tooling/environment recurrente a `SDD Knowledge`;
+- Engram sigue value-driven y `--tools=agent`; no se reduce por número de llamadas.
+
+Runtime `0.1.0-alpha.5`; schemas config/memory siguen en 1, update compatible.

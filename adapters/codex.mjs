@@ -21,6 +21,8 @@ export function renderAgentsSection() {
     '- verify actual acceptance proportionally before completion;',
     '- before any durable SDD write/recovery, load `.sdd/runtime/memory.md` and follow its canonical IDs/record shapes;',
     '- Engram usage is value-driven: additional memory tools are allowed when they materially improve context, recovery, or quality; stop retrieval when more context cannot change the next action;',
+    '- on recovery, if the durable Change already gives a concrete executable frontier, inspect only the implicated code and act instead of reconstructing or re-planning the prior session;',
+    '- Engram session lifecycle/session summaries are optional complements; never create or retry a session merely to satisfy SDD continuity when the canonical Change is already persisted;',
     '- `.sdd/config.json.project_id` is authoritative for SDD memory identity;',
     '- do not modify SDD itself during product work; capture high-value reusable workflow friction as a signal.',
     '',

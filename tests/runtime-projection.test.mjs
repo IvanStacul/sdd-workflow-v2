@@ -28,7 +28,7 @@ test('critical design invariants are projected into runtime', () => {
   assert.match(memory, /Project Knowledge/);
   assert.match(memory, /WorkflowSignal/);
   assert.match(memory, /capture_prompt=false/);
-  assert.match(memory, /STOP RETRIEVAL -> ACT/);
+  assert.match(memory, /STOP RETRIEVAL(?:\/PLANNING)? -> ACT/);
 });
 
 test('runtime keeps memory conditional and Engram value-driven', () => {
@@ -40,4 +40,18 @@ test('runtime keeps memory conditional and Engram value-driven', () => {
   assert.match(adapter, /Engram usage is value-driven/);
   assert.match(adapter, /--tools=agent/);
   assert.doesNotMatch(adapter, /enabled_tools\s*=/);
+});
+
+
+test('recovery fast-path and session lifecycle stay optional', () => {
+  const kernel = read('runtime/kernel.md');
+  const memory = read('runtime/memory.md');
+  const adapter = read('adapters/codex.mjs');
+
+  assert.match(kernel, /Recovery fast-path/);
+  assert.match(kernel, /no reconstruir la sesión ni replanificar el Change/i);
+  assert.match(memory, /session_summary.*opcional/i);
+  assert.match(memory, /No iniciar, re-asociar ni reintentar una sesión/i);
+  assert.match(memory, /fricción de entorno\/tooling reaparece/i);
+  assert.match(adapter, /session lifecycle\/session summaries are optional complements/i);
 });

@@ -96,7 +96,7 @@ No exigir telemetría pesada. Registrar solo evidencia que podamos obtener de ma
 El primer dogfood se considera útil cuando la misma app haya demostrado al menos:
 
 1. un cambio `direct`;
-2. un Change `compact` que sobreviva entre sesiones;
+2. un Change con durability `continuity` que sobreviva entre sesiones;
 3. una escalation de route o una decisión material;
 4. evidencia persistida y recuperada;
 5. al menos una WorkflowSignal real o evidencia razonable de que no hubo señal;
@@ -155,3 +155,33 @@ Decisión Alpha.4:
 También se revierte la optimización prematura por cantidad de tools Engram. El adapter vuelve a exponer el perfil `--tools=agent`; el runtime exige uso **value-driven**: usar context/timeline/session summaries u otras tools cuando reduzcan ambigüedad/rework o mejoren calidad, y detener retrieval cuando ya no pueda cambiar materialmente la siguiente acción.
 
 El error repetido Tailwind native/`spawn EPERM` observado en varias sesiones es candidato a `Project Knowledge`, no a `WorkflowSignal`, salvo que SDD falle repetidamente en recuperar knowledge ya existente.
+
+## Dogfood Round 2 — Alpha.4 continuity findings (2026-08-17)
+
+Caso: tags backend en una sesión y UI en una sesión nueva, GPT-5.6 Luna high.
+
+Primera sesión:
+
+- total ~4m09s; primera edición ~1m30–2m;
+- route `direct`, durability `continuity`;
+- Change canónico `CHG-20260817-01` persistido abierto con UI como frontier;
+- Decision many-to-many y discovery sobre convención Laravel `tag_ticket`;
+- 14 tests / 64 assertions;
+- el modelo intentó `session_summary` y encontró fricción por session id no registrado.
+
+Recovery:
+
+- ~40s para recuperar contexto + ~20s para definir frontera + ~40s de reasoning adicional antes de editar;
+- recuperó correctamente Change abierto, `tag_ticket` y evidencia/browser context;
+- implementó UI sin reabrir backend;
+- tests PHP pasaron; Playwright/Vite encontraron `spawn EPERM`/Tailwind native y consumieron tiempo de diagnóstico;
+- Change cerrado correctamente;
+- `session_summary` volvió a provocar un retry innecesario de lifecycle.
+
+Conclusiones:
+
+1. Runtime projection funcionó: Change ID canónico y durability `continuity` se respetaron.
+2. Cross-session recovery está validado: el usuario no repitió el scope pendiente.
+3. El Change abierto fue suficiente para reconstruir la frontera; session lifecycle no debe ser requisito ni generar retries por ceremonia.
+4. Recovery necesita fast-path: con `Frontier + Constraints` suficientes, inspeccionar código implicado y actuar; ampliar contexto solo por valor.
+5. Fricción repetida de Tailwind/`spawn EPERM` debe poder promoverse a Project Knowledge si vuelve a costar rework; no es por sí misma WorkflowSignal.
