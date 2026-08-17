@@ -16,6 +16,7 @@ const sourceRoot = path.resolve(here, '..');
 const packageJson = JSON.parse(fs.readFileSync(path.join(sourceRoot, 'package.json'), 'utf8'));
 const runtimeVersion = packageJson.version;
 const currentSchemas = { config: 1, memory: 1 };
+const managedRuntimeFiles = ['kernel.md', 'memory.md'];
 
 main();
 
@@ -65,7 +66,7 @@ function initProject(target, options) {
   writeJson(paths.manifestPath, newManifest());
   changes.push(relative(target, paths.manifestPath, manifestExisted ? 'updated' : 'created'));
 
-  installManagedRuntime(paths.kernelPath, changes, target);
+  installManagedRuntime(paths.runtimeDir, changes, target);
   installAdapterSections(target, paths, projectId, container, changes, warnings);
 
   const dockerStatus = probeDockerContainer(container);
@@ -106,7 +107,7 @@ function updateProject(target, options) {
 
   // Project-owned config is intentionally not rewritten for compatible updates.
   changes.push(relative(target, paths.configPath, 'preserved'));
-  installManagedRuntime(paths.kernelPath, changes, target);
+  installManagedRuntime(paths.runtimeDir, changes, target);
   installAdapterSections(target, paths, projectId, container, changes, warnings);
   writeJson(paths.manifestPath, newManifest());
   changes.push(relative(target, paths.manifestPath, 'updated'));
@@ -153,18 +154,21 @@ function printUpdatePlan(target, manifest, compatibility, dryRun) {
   console.log(`mode: ${dryRun ? 'dry-run' : 'apply-compatible-update'}`);
 }
 
-function installManagedRuntime(kernelPath, changes, target) {
-  const kernelSource = path.join(sourceRoot, 'runtime', 'kernel.md');
-  const existed = fs.existsSync(kernelPath);
-  const source = fs.readFileSync(kernelSource, 'utf8');
-  const previous = existed ? fs.readFileSync(kernelPath, 'utf8') : null;
-  if (previous === source) {
-    changes.push(relative(target, kernelPath, 'unchanged'));
-    return;
+function installManagedRuntime(runtimeDir, changes, target) {
+  fs.mkdirSync(runtimeDir, { recursive: true });
+  for (const filename of managedRuntimeFiles) {
+    const sourcePath = path.join(sourceRoot, 'runtime', filename);
+    const targetPath = path.join(runtimeDir, filename);
+    const existed = fs.existsSync(targetPath);
+    const source = fs.readFileSync(sourcePath, 'utf8');
+    const previous = existed ? fs.readFileSync(targetPath, 'utf8') : null;
+    if (previous === source) {
+      changes.push(relative(target, targetPath, 'unchanged'));
+      continue;
+    }
+    fs.writeFileSync(targetPath, source);
+    changes.push(relative(target, targetPath, existed ? 'updated' : 'created'));
   }
-  fs.mkdirSync(path.dirname(kernelPath), { recursive: true });
-  fs.writeFileSync(kernelPath, source);
-  changes.push(relative(target, kernelPath, existed ? 'updated' : 'created'));
 }
 
 function installAdapterSections(target, paths, projectId, container, changes, warnings) {
@@ -208,6 +212,7 @@ function projectPaths(target) {
     configPath: path.join(sddDir, 'config.json'),
     manifestPath: path.join(sddDir, 'manifest.json'),
     kernelPath: path.join(runtimeDir, 'kernel.md'),
+    memoryRuntimePath: path.join(runtimeDir, 'memory.md'),
     agentsPath: path.join(target, 'AGENTS.md'),
     codexConfigPath: path.join(target, '.codex', 'config.toml'),
   };

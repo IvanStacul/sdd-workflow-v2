@@ -29,6 +29,7 @@ test('init installs minimal SDD runtime and Codex adapter', () => {
   assert.ok(fs.existsSync(path.join(dir, '.sdd', 'config.json')));
   assert.ok(fs.existsSync(path.join(dir, '.sdd', 'manifest.json')));
   assert.ok(fs.existsSync(path.join(dir, '.sdd', 'runtime', 'kernel.md')));
+  assert.ok(fs.existsSync(path.join(dir, '.sdd', 'runtime', 'memory.md')));
   assert.ok(fs.existsSync(path.join(dir, 'AGENTS.md')));
   assert.ok(fs.existsSync(path.join(dir, '.codex', 'config.toml')));
 
@@ -40,12 +41,13 @@ test('init installs minimal SDD runtime and Codex adapter', () => {
   assert.match(codex, /\[mcp_servers\.engram\]/);
   assert.match(codex, /ENGRAM_PROJECT=demo-app/);
   assert.match(codex, /sdd-engram/);
-  assert.match(codex, /enabled_tools = \["mem_save", "mem_search", "mem_get_observation", "mem_current_project"\]/);
-  assert.doesNotMatch(codex, /mem_session_start/);
+  assert.match(codex, /--tools=agent/);
+  assert.doesNotMatch(codex, /enabled_tools\s*=/);
 
   const agents = fs.readFileSync(path.join(dir, 'AGENTS.md'), 'utf8');
   assert.match(agents, /<!-- sdd-v2:start -->/);
   assert.match(agents, /\.sdd\/runtime\/kernel\.md/);
+  assert.match(agents, /\.sdd\/runtime\/memory\.md/);
 });
 
 test('init is idempotent and preserves user content', () => {
@@ -91,6 +93,7 @@ test('update previews and applies compatible runtime changes while preserving pr
   const configPath = path.join(dir, '.sdd', 'config.json');
   const manifestPath = path.join(dir, '.sdd', 'manifest.json');
   const kernelPath = path.join(dir, '.sdd', 'runtime', 'kernel.md');
+  const memoryPath = path.join(dir, '.sdd', 'runtime', 'memory.md');
   const agentsPath = path.join(dir, 'AGENTS.md');
 
   const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
@@ -98,14 +101,14 @@ test('update previews and applies compatible runtime changes while preserving pr
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
 
   const oldManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-  oldManifest.runtime_version = '0.1.0-alpha.2';
+  oldManifest.runtime_version = '0.1.0-alpha.3';
   fs.writeFileSync(manifestPath, JSON.stringify(oldManifest, null, 2) + '\n');
   fs.writeFileSync(kernelPath, '# stale kernel\n');
   fs.appendFileSync(agentsPath, '\nProject-owned tail.\n');
 
   const beforeDryRunKernel = fs.readFileSync(kernelPath, 'utf8');
   const dryRun = runUpdate(dir, '--dry-run');
-  assert.match(dryRun, /0\.1\.0-alpha\.2 -> 0\.1\.0-alpha\.3/);
+  assert.match(dryRun, /0\.1\.0-alpha\.3 -> 0\.1\.0-alpha\.4/);
   assert.match(dryRun, /mode: dry-run/);
   assert.equal(fs.readFileSync(kernelPath, 'utf8'), beforeDryRunKernel);
 
@@ -114,7 +117,7 @@ test('update previews and applies compatible runtime changes while preserving pr
   assert.match(output, /config schema: 1 -> 1 \(compatible\)/);
 
   const updatedManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-  assert.equal(updatedManifest.runtime_version, '0.1.0-alpha.3');
+  assert.equal(updatedManifest.runtime_version, '0.1.0-alpha.4');
   assert.deepEqual(updatedManifest.managed_sections, ['AGENTS.md#sdd-v2', '.codex/config.toml#sdd-v2']);
 
   const updatedConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
@@ -123,8 +126,10 @@ test('update previews and applies compatible runtime changes while preserving pr
   const kernel = fs.readFileSync(kernelPath, 'utf8');
   assert.match(kernel, /Evolution feedback/);
   assert.match(kernel, /Route no decide por sí sola/);
-  assert.match(fs.readFileSync(agentsPath, 'utf8'), /durability: `ephemeral \| receipt \| continuity`/);
-  assert.match(fs.readFileSync(agentsPath, 'utf8'), /do not pass host absolute paths/);
+  assert.match(fs.readFileSync(agentsPath, 'utf8'), /durability `ephemeral \| receipt \| continuity`/);
+  assert.match(fs.readFileSync(agentsPath, 'utf8'), /runtime\/memory\.md/);
+  assert.ok(fs.existsSync(memoryPath));
+  assert.match(fs.readFileSync(memoryPath, 'utf8'), /CHG-YYYYMMDD-NN/);
   assert.match(fs.readFileSync(agentsPath, 'utf8'), /Project-owned tail\./);
 });
 

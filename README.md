@@ -75,3 +75,12 @@ SDD V2 separa dos decisiones que antes estaban acopladas:
 - **durability** `ephemeral | receipt | continuity`: qué contexto debe sobrevivir después del slice/sesión.
 
 Esto permite que una feature clara se ejecute `direct` pero deje un receipt mínimo, mientras un cambio cosmético puede ser `direct + ephemeral`. Trabajo explícitamente pendiente para otra sesión siempre requiere `continuity`.
+
+## Alpha.4 — runtime projection
+
+SDD V2 no carga los documentos extensos de `docs/` durante trabajo normal. Los invariantes ejecutables se proyectan a:
+
+- `.sdd/runtime/kernel.md`: contrato mínimo always-loaded;
+- `.sdd/runtime/memory.md`: contrato condicional para recovery y memoria durable.
+
+Esto mantiene bajo el costo de contexto sin depender de que el modelo infiera reglas que solo existen en documentación de diseño.

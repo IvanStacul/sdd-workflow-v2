@@ -139,3 +139,19 @@ Next measurements:
 - whether label-like direct work stops creating memory noise;
 - whether a completed new capability emits one minimal receipt without WorkUnits;
 - whether explicit cross-session work leaves a canonical open Change and resumes with fewer Engram calls.
+
+## Finding — Alpha.4 runtime projection
+
+El dogfood mostró que los contratos largos en `docs/*` no son instrucciones efectivas para el agente consumidor. Ejemplos observados: el Change Model definía `CHG-YYYYMMDD-NN`, pero Alpha.3 solo decía `<change-id>` en runtime y el agente persistió `ticket-priority` como identidad.
+
+Decisión Alpha.4:
+
+- `docs/*` = source-of-design/rationale;
+- `runtime/kernel.md` = contrato always-loaded mínimo;
+- `runtime/memory.md` = proyección operacional condicional para recovery/persistencia durable;
+- invariantes críticos se verifican con tests de runtime projection;
+- no cargar docs extensos durante trabajo normal.
+
+También se revierte la optimización prematura por cantidad de tools Engram. El adapter vuelve a exponer el perfil `--tools=agent`; el runtime exige uso **value-driven**: usar context/timeline/session summaries u otras tools cuando reduzcan ambigüedad/rework o mejoren calidad, y detener retrieval cuando ya no pueda cambiar materialmente la siguiente acción.
+
+El error repetido Tailwind native/`spawn EPERM` observado en varias sesiones es candidato a `Project Knowledge`, no a `WorkflowSignal`, salvo que SDD falle repetidamente en recuperar knowledge ya existente.

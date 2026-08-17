@@ -361,3 +361,32 @@ Engram Docker: el MCP ya está pinneado por `ENGRAM_PROJECT=<project-id>`. No us
 Runtime: `0.1.0-alpha.3`; config/memory schemas permanecen en 1 (compatible update).
 
 Adapter Codex Alpha.3 restringe Engram al hot path: `mem_save`, `mem_search`, `mem_get_observation`, `mem_current_project`. Session lifecycle queda oculto por defecto para reducir tool noise y evitar project-resolution incorrecta bajo Docker.
+
+## Update — Alpha.4: runtime projection
+
+Dogfood Alpha.3 confirmó una brecha entre diseño y ejecución: `docs/change-model.md`, `memory-contract.md`, `workunit-model.md`, etc. eran fuente de diseño para desarrollar SDD pero no se cargaban en el agente consumidor. Por ello no era válido esperar que modelos menos capaces respetaran invariantes que solo existían en docs (ej.: `CHG-YYYYMMDD-NN`).
+
+Alpha.4 formaliza:
+
+```text
+docs/*                = source-of-design / rationale
+runtime/kernel.md      = always-loaded minimal execution contract
+runtime/memory.md      = conditional durable-memory projection
+```
+
+`runtime/memory.md` se carga solo para recovery o escritura durable SDD (`receipt`, `continuity`, Change/WorkUnit, Decision, Evidence, Knowledge, WorkflowSignal). Trabajo `ephemeral` no paga ese contexto.
+
+Proyección operacional incluida:
+
+- Change ID canónico `CHG-YYYYMMDD-NN`, slug separado;
+- Change Receipt cerrado mínimo;
+- continuity con Change abierto + completed/frontier/constraints/evidence;
+- WorkUnit lazy `CHG-...:WU-NN`;
+- criterios de Decision/Evidence;
+- promoción explícita de Project Knowledge reusable;
+- WorkflowSignal reservado a fricción del workflow SDD;
+- recovery value-driven con STOP RETRIEVAL cuando contexto adicional ya no puede cambiar la frontier/decisión.
+
+Engram: se revierte la restricción Alpha.3 a cuatro tools. El adapter Codex vuelve a exponer el perfil `engram mcp --tools=agent`; no se optimiza por número de llamadas sino por valor de contexto/recovery. Session/context/timeline pueden usarse cuando aportan valor, sin sustituir el Change canónico. Bajo Docker sigue prohibido depender de host absolute paths como `mem_session_start.directory`.
+
+Runtime `0.1.0-alpha.4`; schemas config/memory permanecen en 1, por lo que `sdd-v2 update` desde Alpha.3 es compatible.

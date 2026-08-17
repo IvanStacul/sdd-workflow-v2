@@ -22,7 +22,8 @@ my-app/
 │   ├── manifest.json       # managed; versión + schemas
 │   ├── config.json         # user-owned; memoria/autonomía/evolution
 │   └── runtime/
-│       └── kernel.md        # managed
+│       ├── kernel.md        # managed; always-loaded minimal loop
+│       └── memory.md        # managed; conditional durable-memory projection
 ├── .codex/
 │   └── config.toml          # adapter Codex Alpha
 ├── AGENTS.md                # bloque SDD V2 administrado + contenido del proyecto
@@ -58,7 +59,12 @@ No agregar switches hasta que cambien comportamiento real.
 
 Managed. Puede reemplazarse durante `sdd update` si el cambio es compatible o después de una migración exitosa.
 
-Por ahora contiene solo `kernel.md`.
+Contiene una proyección runtime deliberadamente menor que `docs/*`:
+
+- `kernel.md`: contrato mínimo always-loaded;
+- `memory.md`: se carga solo para recovery o escritura durable SDD.
+
+`docs/*` conserva rationale/modelos completos para desarrollar SDD; el agente de producto no debe cargarlos en ejecución normal. Todo invariante conceptual que sea obligatorio durante ejecución debe tener una proyección explícita en `runtime/*` y tests que eviten drift.
 
 ## Fuera del proyecto consumidor
 
@@ -107,7 +113,7 @@ read .sdd/manifest.json
 - planning route (`direct | compact | full`) separada de durability (`ephemeral | receipt | continuity`);
 - Change Receipt mínimo para trabajo material completado sin planificación previa;
 - continuity obligatoria ante trabajo explícitamente pendiente/handoff;
-- adapter Codex limita Engram al tool surface del hot path (`mem_save`, `mem_search`, `mem_get_observation`, `mem_current_project`);
+- Alpha.3 inicialmente limitó Engram a cuatro tools del hot path; esta optimización quedó supersedida en Alpha.4 tras el dogfood;
 - lifecycle de sesión Engram queda fuera del hot path por defecto, especialmente bajo Docker MCP.
 
 ## No incluido todavía
@@ -118,3 +124,12 @@ read .sdd/manifest.json
 - exporter final.
 
 Estas piezas se agregan solo cuando el dogfooding o una necesidad real las justifique.
+
+## Incluido desde Alpha.4
+
+- `runtime/memory.md` como proyección operacional condicional de los contratos durables;
+- Change IDs canónicos `CHG-YYYYMMDD-NN` y shapes explícitos de receipt/continuity/WorkUnit/Decision/Evidence/Knowledge/Signal;
+- tests de runtime projection para detectar drift entre invariantes críticos de `docs/*` y `runtime/*`;
+- adapter Codex vuelve a exponer el perfil Engram `--tools=agent`: la selección de tools es value-driven, no un límite fijo por cantidad.
+
+La restricción de cuatro tools documentada en Alpha.3 queda supersedida por esta regla de Alpha.4.

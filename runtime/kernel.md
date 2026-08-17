@@ -48,6 +48,8 @@ Elegir independientemente de route; aplicar la opción más fuerte que correspon
 
 ## 4. Context + recovery
 
+`runtime/memory.md` es la proyección operacional del modelo durable. **Cargarlo solo** cuando haya recovery o una operación durable SDD (`receipt`, `continuity`, Change/WorkUnit, Decision, Evidence, Knowledge o WorkflowSignal). Trabajo `ephemeral` no debe cargarlo por ceremonia.
+
 Recuperar solo lo necesario para el slice actual:
 
 1. request + código relevante;
@@ -56,7 +58,7 @@ Recuperar solo lo necesario para el slice actual:
 4. decisiones/knowledge aplicables;
 5. evidencia previa solo si condiciona el trabajo.
 
-En una continuación, recuperación default: validar project solo si hace falta -> buscar `SDD Change` -> cargar el Change abierto relevante -> **STOP RETRIEVAL -> ACT**. No recorrer context/session/timeline por defecto.
+En una continuación, cargar `runtime/memory.md` y aplicar recuperación progresiva. La ruta simple es project si hace falta -> Change abierto relevante -> contexto material -> **STOP RETRIEVAL -> ACT**. Herramientas adicionales de Engram son válidas cuando aportan contexto que pueda cambiar la frontier/decisión; no optimizar por número de llamadas.
 
 ## 5. Frontier
 
@@ -98,7 +100,7 @@ Persistir según durability y utilidad:
 
 No persistir plan narrativo, HOW local, retries rutinarios, output completo, verificaciones triviales ni WorkUnits especulativos. Un `ephemeral` no debe guardar una “decisión” solo para demostrar que usó memoria.
 
-Con Engram disponible, preferir MCP directo. En transporte `docker-mcp`, el `project_id` de `.sdd/config.json` es la identidad SDD; el MCP ya se inicia pinneado a ese proyecto. No pasar rutas absolutas del host como `mem_session_start.directory`; el lifecycle de sesión Engram es opcional para el hot path SDD.
+Con Engram disponible, preferir MCP directo. La forma exacta de Change IDs, receipts, continuity, WorkUnits, Decisions, Evidence, Knowledge, Signals y recovery vive en `runtime/memory.md`; no inventar una estructura alternativa. En transporte `docker-mcp`, el `project_id` de `.sdd/config.json` es la identidad SDD.
 
 Si continuidad requerida falla al persistir, no declarar cierre silenciosamente.
 
