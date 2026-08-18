@@ -1273,21 +1273,22 @@ No se decide todavía:
 
 - heurística final de qué trabajo merece receipt;
 - si `slug` debe ser generado automáticamente;
-- IDs finales de Decision/Evidence/Knowledge (ULID es candidato natural);
+- IDs finales de Decision/Evidence/Knowledge;
 - si WorkUnit volverá a existir;
 - prioridad/roadmap ordering;
 - tamaño recomendado de acceptance;
 - packaging de verification;
-- cuándo habilitar same-Change concurrent writers;
-- si Engram cumple `put/get/list` con exactitud suficiente.
+- cuándo habilitar same-Change concurrent writers.
 
-Estas preguntas no bloquean el adapter spike.
+Engram ya no es una pregunta abierta de esta frontier: F5 demostró que el Memory Contract inicial puede implementarse sobre Engram 1.20.0 sin modificar el backend.
+
+Estas preguntas restantes no bloquean Semantic API.
 
 ---
 
 ## 28. Gate de Frontier 3
 
-Change Model queda cerrado cuando podemos responder:
+Change Model queda cerrado porque podemos responder:
 
 1. **¿Cuándo existe Change?**  
    Receipt o continuity; ephemeral no obliga record.
@@ -1322,40 +1323,19 @@ Change Model queda cerrado cuando podemos responder:
 11. **¿Depende de Engram?**  
     No.
 
-12. **¿Puede el adapter spike empezar después?**  
-    Sí: ya tiene dominio y Memory Contract suficientemente acotados para ser falsados.
+12. **¿El modelo puede persistirse sobre el backend candidato real?**  
+    Sí; F5 validó `put/get/list`, update secuencial, exact recovery y project isolation sobre Engram 1.20.0.
 
 ---
 
 ## 29. Próxima frontier
 
-Después de aprobar este archivo:
-
 ```text
-F5 — adapter spike real contra Engram público
+F6 — Semantic API
 ```
 
-La primera implementación debe limitarse a demostrar:
+La siguiente pregunta ya no es cómo guardar un Change sino:
 
-```text
-put/get round-trip
-update secuencial de frontier
-exact recovery
-multiple Changes/list
-project isolation
-restart/new process
-failure behavior
-```
+> ¿qué operaciones semánticas mínimas debe exponer SDD para que el agente use este modelo correctamente sin construir lifecycle/persistence/closure manualmente en cada request?
 
-No incluye:
-
-```text
-CAS
-atomic allocator
-runtime
-CLI
-skills
-migration
-WorkUnit
-Engram fork
-```
+No crear todavía runtime, CLI o skills hasta cerrar esa superficie.

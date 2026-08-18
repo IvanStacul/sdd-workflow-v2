@@ -247,14 +247,27 @@ Una skill SDD solo entra con trigger y beneficio claros de progressive disclosur
 
 ## 7. Frontera con Engram
 
-Engram es el primer backend candidato porque el dogfood ya demostró:
+Engram es el primer backend candidato porque la evidencia acumulada ya demostró dos niveles distintos:
+
+**Dogfood histórico:**
 
 - persistencia real;
 - restart/down-up;
 - MCP funcional;
 - recovery cross-session.
 
-Eso valida Engram como infraestructura de memoria, no todas las semánticas de SDD.
+**F5 adapter spike real sobre Engram 1.20.0:**
+
+- `put/get` round-trip;
+- update secuencial y recovery desde una instancia nueva;
+- identidad exacta sin selección por ranking;
+- project isolation incluso frente a normalización física;
+- bounded list que declara `complete=false` al superar su bound;
+- reconciliación de respuesta perdida después de POST y PATCH;
+- normalización de backend unavailable;
+- cleanup completo sin residuos.
+
+Esto valida Engram como backend conformante **para el modelo de ejecución inicial declarado**, no para same-Change concurrent writers ni para garantías distribuidas no probadas.
 
 Ruta canónica:
 
@@ -371,20 +384,20 @@ La evidencia relevante no se pierde: Git conserva el historial y `dogfood-eviden
 
 ```text
 F1  Architecture ownership                    DONE
-F2  Memory Contract                           REOPENED
-F3  Change Model                              reconcile after F2
-F4  Active-tree cleanup                       CURRENT
-F5  Real adapter spike against public Engram
-F6  Semantic API
+F2  Memory Contract                           DONE
+F3  Change Model                              DONE
+F4  Active-tree cleanup                       DONE
+F5  Real adapter spike against public Engram  DONE
+F6  Semantic API                              CURRENT
 F7  minimal host/runtime integration
 F8  skills individually, only if justified
 F9  pre-dogfood conformance gate
 DOGFOOD
 ```
 
-F2 se reabre porque la primera revisión convirtió demasiado pronto una solución candidata —database-grade CAS/create-if-absent— en requisito universal.
+F5 confirmó que el contrato reducido puede implementarse sobre Engram 1.20.0 sin modificar Engram ni reintroducir una segunda autoridad.
 
-Eso debe corregirse antes del adapter.
+El experimento que produjo esa evidencia se elimina del árbol activo al cerrar F5.
 
 ---
 
@@ -419,16 +432,35 @@ El gate estructural manda:
 
 ## 13. Próxima frontier
 
-Después de la poda del árbol:
+**F6 — Semantic API.**
 
-**solo `docs/memory-contract.md`.**
+La siguiente frontera ya no investiga almacenamiento.
+
+Debe definir la mínima API de dominio que convierta:
+
+```text
+request / host intent
+        |
+        v
+semantic operation
+        |
+        v
+Change Model
+        |
+        v
+Memory Contract
+```
 
 Preguntas:
 
-1. ¿qué operaciones necesita realmente `ephemeral/receipt/continuity`?
-2. ¿qué recovery exacto puede garantizarse mediante un adapter real?
-3. ¿qué modelo de concurrencia declara la primera Alpha?
-4. ¿qué garantías fuertes son core y cuáles capacidades opcionales?
-5. ¿cómo usar Engram sin modificarlo ni convertir detalles físicos en semántica SDD?
+1. ¿qué operaciones necesita el agente para `ephemeral`, `receipt` y `continuity`?
+2. ¿qué invariantes deben vivir en código y no en instrucciones al LLM?
+3. ¿cómo se abren/actualizan/cierran Changes sin exponer `put arbitrary JSON`?
+4. ¿cómo se liga `completed` con evidence proporcional?
+5. ¿cómo se preserva scope drift explícito sin phase graph?
+6. ¿qué errores del Memory Contract deben propagarse y cuáles traducirse a semántica de dominio?
+7. ¿cuál es el slice mínimo falsable antes de crear runtime, CLI o skills?
 
-No se escribe adapter hasta cerrar esas cinco respuestas.
+Regla:
+
+> diseñar primero la superficie semántica mínima; implementar después solo el slice necesario para falsarla.

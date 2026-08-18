@@ -37,12 +37,12 @@ Engram es una dependencia externa. SDD no modifica ni mantiene un fork de Engram
 
 ```text
 docs/rebaseline-architecture.md  frontera y principios del producto
-docs/memory-contract.md          contrato en revisión activa
-docs/change-model.md             modelo en revisión activa
-docs/dogfood-evidence.md         evidencia empírica
+docs/memory-contract.md          contrato durable validado para la primera Alpha
+docs/change-model.md             modelo de Change validado contra ese contrato
+docs/dogfood-evidence.md         evidencia empírica de dogfood histórico
 ```
 
-`memory-contract.md` y `change-model.md` siguen activos, pero deben reconciliarse con la política actual: no exigir garantías de storage que no hayan demostrado ser necesarias para el modelo de ejecución soportado.
+`memory-contract.md` y `change-model.md` están reconciliados para el modelo inicial: varios Changes independientes y handoff secuencial del mismo Change, sin prometer same-Change multi-writer.
 
 ## Estado del producto
 
@@ -66,15 +66,39 @@ La infraestructura Docker validada se conserva en:
 infra/engram/
 ```
 
-El siguiente trabajo de integración debe usar exclusivamente superficies públicas/soportadas de Engram. Si una primitive del Memory Contract no puede implementarse limpiamente, primero se decide si esa primitive es realmente necesaria o si Engram no es el backend apropiado.
+Engram 1.20.0 quedó validado como **backend candidato conformante para el modelo inicial** mediante su superficie HTTP pública, sin fork, sin acceso al SQLite privado y sin side-state autoritativo.
 
-No se resuelve la incompatibilidad mediante:
+El spike real demostró:
+
+```text
+put/get round-trip
+update secuencial
+recovery desde una instancia nueva
+identidad exacta
+bounded list con complete=false al superar el bound
+project isolation
+reconciliación de respuesta perdida en POST/PATCH
+backend unavailable
+cleanup sin residuos
+```
+
+La capacidad validada es deliberadamente acotada:
+
+```text
+✓ Changes independientes
+✓ handoff secuencial del mismo Change
+✗ same-Change concurrent writers
+```
+
+El transporte final del producto todavía no está decidido. El spike validó el **fit semántico de Engram**, no que `docker exec + HTTP` deba ser la distribución final.
+
+No se resuelve una incompatibilidad futura mediante:
 
 - un fork SDD de Engram;
 - acceso al schema SQLite privado de Engram;
 - `.sdd/state.json` como segunda autoridad;
 - parsing de output humano;
-- FTS tratado como lookup exacto sin verificación contractual.
+- fuzzy ranking tratado como identidad canónica.
 
 ## Disciplina del árbol activo
 
@@ -90,8 +114,18 @@ No se crean carpetas `legacy/`, `deprecated/`, `old/` o documentos tombstone sol
 
 ## Próxima frontier
 
-Revisar **solo `docs/memory-contract.md`**.
+**F6 — Semantic API.**
 
-Objetivo: separar las garantías realmente necesarias para la primera Alpha de garantías fuertes de concurrencia que todavía no están justificadas, manteniendo Engram como dependencia externa y sin perder exactitud de recovery ni una sola autoridad durable.
+Objetivo: definir la capa mínima que evita que el LLM implemente manualmente lifecycle, persistence, scope y closure en cada request.
 
-Después se reconcilia `docs/change-model.md` y recién entonces se crea un adapter spike real.
+La primera frontier de F6 debe responder, antes de crear runtime/CLI/skills:
+
+```text
+qué operaciones de dominio necesita realmente el agente
+qué invariantes debe imponer la API
+qué parte es pura lógica y qué parte depende de Memory Contract
+cómo mantener ephemeral/receipt/continuity adaptativos
+cómo probar closure y recovery sin introducir ceremony
+```
+
+No se reintroduce todavía una Alpha instalable.

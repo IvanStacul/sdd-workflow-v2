@@ -970,294 +970,256 @@ Esto permite evolución sin convertir capacidad futura en requisito presente.
 
 ---
 
-## 21. Engram: criterio de integración
+## 21. Engram 1.20.0 — perfil validado
 
-Engram es una dependencia externa y el primer backend candidato.
+Engram permanece como dependencia externa y primer backend candidato.
 
-La evidencia existente ya soporta:
+F5 validó el Memory Contract contra **Engram 1.20.0 real**, usando exclusivamente su superficie HTTP pública dentro del container existente.
 
-- persistencia cross-session;
-- restart/down-up;
-- uso mediante MCP;
-- recuperación real en dogfood.
-
-Eso no autoriza asumir que cualquier operación del Memory Contract está resuelta.
-
-El próximo adapter spike debe usar exclusivamente:
-
-```text
-Engram public/supported MCP/API/CLI surface
-```
-
-preferentemente MCP para el hot path previsto.
-
-No:
+No se utilizó:
 
 ```text
 fork Engram
-modificar código Go
-leer SQLite privado
-crear state.json paralelo
-parsear output humano como contrato
+código Go modificado
+SQLite privado
+state.json paralelo
+mapping persistente auxiliar
+parsing de output humano
+elección del LLM por ranking
 ```
 
-### Mapping físico
+### 21.1 Mapping físico validado
 
-El adapter podrá usar internamente mecanismos como:
+La identidad lógica SDD permanece independiente de las reglas físicas de Engram.
+
+Proyecto físico:
 
 ```text
-topic_key
-observation id
-type
-project
-search
-get observation
+sddv2-<sha256(project_id)[0:24]>
 ```
 
-siempre que exponga las semánticas de este contrato.
+Record físico:
 
-Esos detalles no entran al Domain Model.
+```text
+topic_key = sdd/v2/<kind>/<sha256(record.id)>
+```
+
+Tipo físico:
+
+```text
+change    -> sdd_change
+decision  -> sdd_decision
+evidence  -> sdd_evidence
+knowledge -> sdd_knowledge
+```
+
+El JSON lógico conserva `project_id`, `kind` e `id` originales.
+
+El hashing evita que normalización, lowercase o límites de `topic_key` de Engram alteren la identidad lógica.
+
+### 21.2 `get` exacto validado
+
+La implementación física usa `/search`, pero no usa ranking como autoridad.
+
+Flujo probado:
+
+```text
+derivar topic_key determinista
+-> buscar con project/type/scope físicos
+-> filtrar equality exacta
+-> validar project_id/kind/id dentro del JSON
+-> 0 / 1 / >1 = not_found / record / ambiguous
+```
+
+Dos records visualmente similares no se confundieron.
+
+### 21.3 `put` validado
+
+Se probó:
+
+```text
+create
+update secuencial
+read-after-write
+recovery desde nueva instancia
+```
+
+También se simuló pérdida de respuesta **después** de que Engram confirmara:
+
+```text
+POST /observations
+PATCH /observations/{id}
+```
+
+En ambos casos, exact `get` permitió reconciliar correctamente el write.
+
+### 21.4 `list` bounded validado
+
+Para la primera Alpha, el adapter puede escanear un bucket físico reservado al proyecto SDD y declarar un bound explícito.
+
+El spike probó:
+
+```text
+<= 20 records -> conjunto completo dentro del bound
+> 20 records  -> complete=false
+```
+
+No se presentó un conjunto truncado como exhaustivo y no se creó índice paralelo.
+
+El número `20` es una **capacidad del adapter validado**, no una regla eterna del Domain Model.
+
+### 21.5 Project isolation validado
+
+Dos logical projects deliberadamente sujetos a posibles normalizaciones físicas se mantuvieron aislados mediante el mapping determinista del adapter.
+
+La misma Change ID pudo existir en ambos sin cross-project recovery.
+
+### 21.6 Transformaciones de Engram
+
+El spike verificó explícitamente boundaries que podían alterar datos:
+
+- normalización de project;
+- normalización/límite de topic key;
+- transformación de tags `<private>...</private>`;
+- respuesta `null` para colecciones Go vacías;
+- protección opcional de DELETE mediante `ENGRAM_HTTP_TOKEN`;
+- soft-delete vs hard-delete.
+
+El adapter neutralizó esas transformaciones sin trasladarlas al dominio.
+
+### 21.7 Cleanup
+
+El experimento solo se consideró PASS después de:
+
+```text
+hard-delete observations
+-> verificar que ya no sean recuperables
+-> delete sessions
+-> cero warnings/residuos
+```
+
+Esto evita convertir evidencia experimental en basura durable.
 
 ---
 
-## 22. Adapter spike: preguntas falsables
+## 22. Capabilities demostradas
 
-La próxima implementación no debe intentar "completar SDD".
+Perfil observado:
 
-Debe responder únicamente:
+```yaml
+put: true
+exact_get: true
+bounded_list: true
+durable_ack: true
+project_isolation: true
+search: true
 
-### A1 — put/get round-trip
+conditional_put: false
+same_change_multi_writer: false
 
-```text
-put Change
--> get exact por identidad SDD
--> mismo record normalizado
+validated_backend: Engram 1.20.0
+validated_transport: HTTP public surface via docker exec
+validated_project_scan_bound: 20
 ```
 
-### A2 — update secuencial
+`validated_transport` describe **cómo se falsó el contrato**, no una decisión de distribución final.
 
-```text
-get Change
--> modificar frontier
--> put
--> process nuevo
--> get
--> frontier nueva
-```
-
-### A3 — exactness
-
-Crear records parecidos y demostrar que `get(X)`:
-
-```text
-nunca devuelve Y
-```
-
-aunque el backend use una primitive llamada search.
-
-### A4 — ambiguity
-
-Si el mapping físico produce más de una coincidencia exacta:
-
-```text
-ambiguous
-```
-
-no "latest wins" silencioso.
-
-### A5 — multiple Changes
-
-Crear varios Changes y demostrar:
-
-```text
-list(project, change)
-```
-
-completo dentro del bound declarado.
-
-Si Engram no puede demostrarlo con su superficie pública:
-
-```text
-adapter FAIL para bounded_list
-```
-
-No se crea índice local.
-
-### A6 — project isolation
-
-Misma identidad en dos proyectos:
-
-```text
-get(project A) != project B
-```
-
-### A7 — restart/new process
-
-Sin estado local:
+La Semantic API puede depender de las capabilities lógicas:
 
 ```text
 put
--> restart/new process
--> get
+exact_get
+bounded_list
+durable_ack
+project_isolation
 ```
 
-### A8 — ambiguous write
-
-Simular/reproducir cuando sea viable una pérdida de confirmación y demostrar que exact read puede reconciliar el estado o que el adapter devuelve `ambiguous`.
-
-### A9 — unavailable
-
-Backend caído:
+No debe depender de:
 
 ```text
-unavailable
+docker exec
+curl
+Engram observation id
+topic_key
+revision_count
 ```
-
-sin fallback autoritativo.
-
-### A10 — search independence
-
-Deshabilitar/ignorar semantic discovery no rompe `put/get/list`.
-
-Si `get` usa físicamente el endpoint search, la prueba debe distinguir ese mecanismo de la semántica aproximada.
 
 ---
 
-## 23. Lo que el spike NO debe probar todavía
+## 23. Límites no demostrados
 
-Fuera de la siguiente frontier:
+F5 no demuestra:
 
 ```text
 same-Change concurrent writers
 CAS
+locks/leases
 atomic create-if-absent
-WorkUnit
-router
-skills
-CLI
-runtime kernel
-migration
-OpenCode adapter
-exporters
-Engram fork
+cross-machine concurrent mutation
+Engram Cloud canonical concurrency
+unbounded list/pagination
+transport final MCP vs HTTP
+production packaging
+runtime/CLI/skills
 ```
 
-Si aparecen durante el spike:
+Esos puntos no son defectos ocultos: están fuera del modelo inicial o de esta frontier.
+
+Si una frontier futura necesita uno de ellos:
 
 ```text
-registrar observación
--> no ampliar la frontier
+necesidad de dominio
+-> capability requerida
+-> prueba específica
+-> recién entonces arquitectura/implementación
 ```
 
 ---
 
-## 24. Qué cambia respecto del contrato anterior
+## 24. Gate vigente del Memory Contract
 
-Se eliminan como requisitos core:
-
-```text
-atomic create-if-absent
-optimistic concurrency / CAS
-version token obligatorio
-append como primitive separada
-arbitrary structured query
-same-Change multi-writer guarantee
-```
-
-Se conservan:
-
-```text
-una sola autoridad
-backend independence
-project isolation
-durable acknowledgement
-exact-verifiable known-state recovery
-bounded enumeration
-explicit failure
-no hidden side state
-search semántico separado del dominio
-```
-
-Y se agrega una distinción importante:
-
-> una API física denominada `search` puede participar en un `get` exacto si el adapter demuestra equality y ausencia de ranking como fuente de autoridad.
-
-Esto evita diseñar el contrato según nombres de herramientas de Engram.
-
----
-
-## 25. Preguntas que pasan a Change Model
-
-Después de aprobar esta frontier, `docs/change-model.md` debe revisar:
-
-1. identidad de Change sin depender de allocator atómico;
-2. si `CHG-YYYYMMDD-NN` sigue siendo apropiado;
-3. qué campos necesita realmente receipt;
-4. qué campos necesita continuity;
-5. cómo representar frontier;
-6. cuándo Evidence se embebe o separa;
-7. qué significa `closed/completed`;
-8. cómo se comporta ante un escenario concurrente no soportado.
-
-No se escribe adapter antes de reconciliar esas decisiones.
-
----
-
-## 26. Gate de Frontier 2
-
-Memory Contract queda cerrado cuando podemos responder:
+Para la primera Alpha podemos responder:
 
 1. **¿Dónde vive el estado durable?**  
    Detrás de Memory Contract + adapter; no en un file paralelo.
 
 2. **¿Qué operations son core?**  
-   `put`, `get`, `list`; `search` es capability opcional.
+   `put`, `get`, `list`; `search` semántico es opcional.
 
-3. **¿Cómo se recupera un Change conocido?**  
-   Por `get` semánticamente exacto y validado, aunque el backend use internamente una API denominada search.
+3. **¿Puede recuperarse un Change conocido de forma verificable?**  
+   Sí; F5 lo demostró sobre Engram 1.20.0 real.
 
-4. **¿Cómo se recuperan varios Changes?**  
-   Mediante `list` bounded que declara completitud.
+4. **¿Puede actualizarse y recuperarse desde una instancia nueva?**  
+   Sí.
 
-5. **¿Necesitamos CAS?**  
-   No para la primera Alpha porque same-Change concurrent writers no está soportado.
+5. **¿Puede enumerarse más de un Change sin índice local?**  
+   Sí, dentro del bound declarado; sobrepasarlo produce `complete=false`.
 
-6. **¿Necesitamos create-if-absent?**  
-   No como primitive universal; la identidad del dominio no debe requerir un allocator central.
+6. **¿Existe project isolation?**  
+   Sí, probado.
 
-7. **¿Qué pasa si Engram no puede hacer `list` completo o `get` verificable?**  
-   El adapter no conforma; no se crea side-state ni se modifica Engram.
+7. **¿Puede reconciliarse una respuesta perdida después de un write?**  
+   Sí, para POST/PATCH cuando exact `get` confirma el mismo estado lógico.
 
-8. **¿Qué significa persisted?**  
-   Write confirmado o reconciliado mediante exact read.
+8. **¿Necesitamos CAS?**  
+   No para el modelo inicial porque same-Change concurrent writers sigue fuera de soporte.
 
-9. **¿Quién decide mutabilidad?**  
-   Semantic API/Domain Model.
+9. **¿Necesitamos modificar Engram?**  
+   No.
 
-10. **¿Cuál es la próxima frontier?**  
-    Reconciliar únicamente `docs/change-model.md`.
+10. **¿Qué queda pendiente en almacenamiento antes de F6?**  
+    Nada para el slice inicial; nuevas capabilities requieren nueva evidencia.
 
 ---
 
-## 27. Próxima frontier
+## 25. Próxima frontier
 
-**Único archivo activo:**
+El Memory Contract deja de ser la frontier activa.
 
-```text
-docs/change-model.md
-```
-
-No crear todavía:
+La siguiente capa es:
 
 ```text
-lib/
-adapters/
-runtime/
-cli/
-skills/
-tests/
+F6 — Semantic API
 ```
 
-La pregunta siguiente es:
-
-> ¿Cuál es el Change mínimo que funciona correctamente sobre este contrato y dentro del modelo de concurrencia declarado, sin allocator central, Progress/SessionSummary/WorkUnit obligatorios ni semántica heredada de Alpha.1?
+El adapter productivo todavía no se promueve desde el spike. Primero debe existir una superficie semántica mínima que determine qué operaciones necesita realmente el producto.
