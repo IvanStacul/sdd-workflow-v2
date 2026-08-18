@@ -153,7 +153,6 @@ const sdd = createSemanticApi({
   projectId,
   memory,
   idFactory,
-  clock,
 });
 ```
 
@@ -207,6 +206,7 @@ recordDecision()
 recordKnowledge()
 recordEvidence()
 relateChange()
+addDependency()
 supersedeChange()
 splitChange()
 coordinateAgents()
@@ -248,11 +248,6 @@ continuity:
 
   completed: []
   blockers: []
-
-relations:
-  spawned_from: optional-change-id
-  split_from: optional-change-id
-  supersedes: optional-change-id
 ```
 
 ### 7.1 Invariantes impuestas por código
@@ -267,7 +262,7 @@ relations:
 6. requerir `intent` no vacío;
 7. requerir `continuity.next` no vacío;
 8. normalizar listas vacías sin inventar secciones;
-9. validar relaciones permitidas;
+9. rechazar `relations` en el slice inicial;
 10. persistir mediante un único `memory.put`;
 11. devolver solo después de confirmación durable.
 
@@ -334,6 +329,8 @@ evidence:
   summary: >
     Test dirigido cubre open, closed y pending; todos los casos
     producen el resultado esperado.
+  covers:
+    - A1
 
 contract:
   acceptance:
@@ -350,9 +347,10 @@ Debe:
 3. usar `close.reason=completed`;
 4. requerir `outcome` no vacío;
 5. requerir evidence no vacía;
-6. no crear `continuity`;
-7. persistir en un único `put`;
-8. confirmar antes de devolver.
+6. si existe acceptance explícita, exigir coverage completo mediante `evidence.covers`;
+7. no crear `continuity`;
+8. persistir en un único `put`;
+9. confirmar antes de devolver.
 
 ### 8.2 Evidence mínima
 
@@ -363,6 +361,7 @@ Acepta la forma embebida del Change Model:
 ```yaml
 evidence:
   summary: non-empty
+  covers: optional acceptance ids
   refs: optional
 ```
 
@@ -505,7 +504,6 @@ Forma:
 updateChange(id, [
   { type: "refine", ... },
   { type: "set_frontier", ... },
-  { type: "add_dependency", ... },
 ])
 ```
 
@@ -622,30 +620,38 @@ No crea:
 
 ---
 
-## 14. Mutation `add_dependency`
+## 14. Relaciones: diferidas del slice inicial
 
-Entrada:
+El Change Model conserva relaciones válidas como:
 
-```yaml
-type: add_dependency
-target: CHG-...
+```text
+split_from
+spawned_from
+depends_on
+supersedes
 ```
 
-Reglas mínimas:
+pero F6A no expone todavía mutations de relaciones.
 
-- target debe ser Change ID válido;
-- no puede depender de sí mismo;
-- no puede duplicar la misma dependencia;
-- la API debe comprobar que target existe;
-- solo persiste `depends_on`.
+Motivos:
 
-No crea el inverso `blocks`.
+- `supersedes` requiere coordinar al menos dos Changes;
+- `split_from` forma parte de una operación de split aún no diseñada;
+- `depends_on` no fue necesario para validar continuity/receipt en el dogfood previo;
+- agregar relaciones ahora ampliaría el primer slice sin evidencia de que sean necesarias para probar la Semantic API.
 
-### Por qué entra al core
+Por tanto no existe todavía:
 
-`depends_on` puede cambiar si una frontier es ejecutable.
+```text
+add_dependency
+relateChange
+supersedeChange
+splitChange
+```
 
-Las relaciones `spawned_from`, `split_from`, `supersedes` se expresan inicialmente al crear un nuevo Change y no necesitan mutation dedicada todavía.
+Si el siguiente dogfood demuestra que una dependencia durable cambia una frontier real, se diseña y prueba esa operación explícitamente.
+
+Esto no elimina las relaciones del Domain Model; solo evita promocionarlas prematuramente a la primera API ejecutable.
 
 ---
 
@@ -684,6 +690,9 @@ outcome: >
 evidence:
   summary: >
     Tests dirigidos cubren open/closed y persistencia.
+  covers:
+    - A1
+    - A2
   refs: optional
 
 ```
@@ -709,15 +718,17 @@ acceptance:
   - id: A2
 ```
 
-el close input debe poder declarar:
+el close input debe poder declarar la cobertura dentro de la propia evidence:
 
 ```yaml
-covers:
-  - A1
-  - A2
+evidence:
+  summary: Tests dirigidos cubren la aceptación.
+  covers:
+    - A1
+    - A2
 ```
 
-La API verifica que todos los IDs requeridos estén presentes.
+La API verifica que todos los IDs requeridos estén presentes en `evidence.covers`.
 
 Esto **no prueba** que el test sea verdadero.
 
@@ -876,7 +887,6 @@ SemanticApi
 |
 +-- project binding
 +-- idFactory
-+-- clock
 +-- MemoryPort
 |
 +-- openChange
@@ -1036,8 +1046,8 @@ Debe probar únicamente:
 ```text
 openChange
 getChange
-updateChange(set_frontier)
-closeChange(completed)
+updateChange(refine / set_frontier)
+closeChange(completed / cancelled)
 createReceipt
 listOpenChanges
 ```
@@ -1048,19 +1058,24 @@ con un `MemoryPort` in-memory.
 
 1. ephemeral no genera ninguna escritura;
 2. open sin frontier -> reject;
-3. caller intenta suministrar ID/lifecycle -> reject;
-4. recovery exacto devuelve frontier actual;
-5. set_frontier sobre closed -> reject;
-6. close completed sin outcome -> reject;
-7. close completed sin evidence -> reject;
-8. acceptance parcial -> reject;
-9. close completed con blocker -> reject;
-10. closure elimina continuity;
-11. receipt se crea cerrado directamente;
-12. receipt no inventa continuity;
-13. listOpenChanges no incluye closed;
-14. `complete=false` del MemoryPort se preserva;
-15. memory unavailable no se transforma en success.
+3. caller intenta suministrar ID/lifecycle/project/kind -> reject;
+4. open con `relations` -> reject en el slice inicial;
+5. recovery exacto devuelve frontier actual;
+6. `refine` preserva id/project/kind/lifecycle;
+7. `refine` con campos reservados -> reject;
+8. set_frontier sobre closed -> reject;
+9. close completed sin outcome -> reject;
+10. close completed sin evidence -> reject;
+11. acceptance parcial -> reject;
+12. close completed con blocker -> reject;
+13. closure elimina continuity;
+14. close cancelled no inventa outcome/evidence;
+15. receipt se crea cerrado directamente;
+16. receipt no inventa continuity;
+17. receipt con acceptance y coverage parcial -> reject;
+18. listOpenChanges no incluye closed;
+19. `complete=false` del MemoryPort se preserva;
+20. memory unavailable no se transforma en success.
 
 No Engram todavía.
 
@@ -1107,6 +1122,7 @@ Fuera de F6 inicial:
 - API dedicada de Decision;
 - API dedicada de Evidence separado;
 - Knowledge promotion;
+- relations / `add_dependency`;
 - supersede multi-record;
 - split multi-record;
 - same-Change multi-writer;
@@ -1142,7 +1158,7 @@ Este contrato queda aprobado cuando podemos responder:
    `getChange`.
 
 5. **¿Cómo se actualiza sin arbitrary JSON patch?**  
-   `updateChange` con mutations semánticas conocidas.
+   `updateChange` con mutations semánticas conocidas: inicialmente `refine` y `set_frontier`.
 
 6. **¿Cómo se cierra completed?**  
    `closeChange` con outcome + evidence + acceptance coverage + cero blockers.
