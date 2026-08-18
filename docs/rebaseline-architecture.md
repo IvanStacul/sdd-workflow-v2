@@ -1,47 +1,45 @@
 # SDD V2 — Rebaseline Architecture
 
-## 1. Status y propósito
+## 1. Estado
 
-**Estado:** arquitectura de reconstrucción; reemplaza como autoridad arquitectónica a la interpretación introducida por `0.2.0-alpha.1`.
+**Estado actual: reconstrucción, sin Alpha instalable vigente.**
 
-SDD V2 sigue siendo un proyecto experimental. `0.2.0-alpha.1` se conserva como evidencia de diseño y dogfood, pero **no es baseline arquitectónico a preservar**. No existe obligación de migrar desde esa implementación mientras el nuevo núcleo no esté estabilizado.
+`0.2.0-alpha.1` queda invalidada como baseline de producto. Su evidencia útil se conserva en Git y en `docs/dogfood-evidence.md`; su implementación no se conserva en el árbol activo solo por historia.
 
-Este documento fija solamente la **frontera del producto y la autoridad de cada capa**. No define todavía el detalle final del Memory Contract, el schema completo de Change, el runtime, el CLI ni las skills.
+Este documento es la autoridad para la frontera arquitectónica de SDD V2.
 
-Regla de trabajo durante esta reconstrucción:
+Regla de trabajo:
 
-> Cada frontier modifica pocos archivos, cierra una decisión concreta y se detiene. Una hipótesis no entra al runtime por el solo hecho de parecer razonable.
-
-El objetivo de SDD V2 se mantiene: conservar trazabilidad, continuidad, decisiones materiales, scope control y verificación útil de V1, reduciendo ceremony, contexto cargado y artefactos obligatorios.
+> una frontier concreta, pocos archivos activos, evidencia antes de promover una hipótesis a producto.
 
 ---
 
 ## 2. Problema que SDD resuelve
 
-Los harnesses modernos ya saben:
+Los harnesses modernos ya resuelven:
 
-- leer y modificar repositorios;
-- ejecutar shell/tests;
-- usar herramientas/MCP;
-- descubrir skills;
-- delegar a subagentes cuando el host lo permite;
-- mantener contexto conversacional durante una sesión.
+- lectura y edición del repo;
+- shell y tests;
+- tool/MCP invocation;
+- skill discovery;
+- subagentes cuando el host los soporta;
+- contexto conversacional dentro de una sesión.
 
-SDD no debe reconstruir esas capacidades.
+SDD no debe duplicar esas capacidades.
 
-SDD existe para cubrir una capa distinta: **semántica durable de cambio y continuidad entre ejecuciones/agentes sin volver a un workflow documental rígido**.
+SDD aporta una capa distinta:
 
-Las responsabilidades que justifican SDD son:
+> **semántica durable de cambio, continuidad y cierre verificable entre ejecuciones/agentes, sin volver a un workflow documental rígido.**
 
-1. representar un `Change` como intención durable independiente de una conversación;
-2. preservar solamente las decisiones, evidencia, restricciones y frontier que deban sobrevivir;
-3. recuperar estado conocido de forma determinista cuando existe identidad suficiente;
+Responsabilidades propias:
+
+1. representar un `Change` como intención durable cuando realmente haga falta;
+2. preservar solo restricciones, decisiones, evidence y frontier que deban sobrevivir;
+3. recuperar estado conocido sin depender de razonamiento semántico abierto;
 4. evitar scope drift silencioso;
-5. distinguir trabajo efímero de trabajo que merece receipt o continuity;
-6. impedir que “terminé de editar” equivalga automáticamente a “cumple lo acordado”;
-7. mantener esa semántica independiente del backend y del harness concreto.
-
-SDD agrega **semántica y contratos**, no otro IDE, otro shell ni otra metodología de fases.
+5. distinguir trabajo efímero de receipt/continuity;
+6. exigir evidencia proporcional antes de declarar cumplimiento material;
+7. mantener esas reglas separadas del backend y del harness.
 
 ---
 
@@ -49,19 +47,17 @@ SDD agrega **semántica y contratos**, no otro IDE, otro shell ni otra metodolog
 
 SDD V2 no es:
 
-- un reemplazo de Codex, OpenCode, Claude Code, Cursor u otro harness;
-- un phase graph `proposal -> spec -> design -> tasks -> apply -> verify -> archive`;
-- un conjunto obligatorio de documentos por Change;
-- un file-based workflow donde el estado operativo principal viva en Markdown/JSON del repo;
-- un wrapper obligatorio alrededor de cada tool call;
+- un reemplazo de Codex/OpenCode/Claude Code;
+- un phase graph;
+- una colección obligatoria de proposal/spec/design/tasks;
+- un file-based workflow store;
+- un wrapper alrededor de cada tool call;
 - un backend de memoria;
-- una colección ilimitada de Agent Skills;
-- un scheduler de subagentes propio por defecto;
-- un sistema que requiere WorkUnits para todo Change;
-- un catálogo de reglas del stack/proyecto;
-- una razón para duplicar capacidades que el host ya resuelve mejor.
-
-Un mecanismo solo entra a SDD si resuelve una responsabilidad propia de SDD o una incompatibilidad real entre hosts/backends.
+- un fork o extensión obligatoria de Engram;
+- un catálogo obligatorio de Agent Skills;
+- un scheduler propio;
+- un WorkUnit system obligatorio;
+- un archivo de historial de todas las ideas descartadas.
 
 ---
 
@@ -69,617 +65,370 @@ Un mecanismo solo entra a SDD si resuelve una responsabilidad propia de SDD o un
 
 ### P1 — Una sola autoridad semántica
 
-Cada dato durable de SDD tiene un único owner canónico.
+Un dato durable SDD tiene un único owner canónico.
 
-No se admite un diseño donde, por ejemplo, lifecycle/frontier/evidence de un Change sean simultáneamente canónicos en un archivo local y en Engram.
+Cache, índice o proyección solo puede existir si es derivable y descartable.
 
-Caches, índices o proyecciones pueden existir, pero deben ser **derivables, reemplazables y no autoritativos**.
+### P2 — Backend independence existe en código
 
-### P2 — Backend independence debe existir en código
+Los records canónicos atraviesan una interfaz SDD y un adapter. El agente no inventa serialización, keys o protocolos físicos por request.
 
-La independencia de Engram no puede ser solamente documental.
+### P3 — Dependencias externas permanecen externas
 
-Las operaciones canónicas de SDD atraviesan un contrato semántico propio y un adapter. El agente no debe tener que inventar serialización, keys, topic names, queries o reglas de actualización para representar un Change.
+SDD puede usar Engram, pero no requiere modificarlo ni mantener un fork para satisfacer su arquitectura.
 
-### P3 — Known state no depende de fuzzy search
+Si el backend no implementa una capacidad:
 
-Cuando SDD conoce una identidad/key debe usar acceso exacto o consulta estructurada.
+1. comprobar si esa capacidad es realmente necesaria para el modelo soportado;
+2. si lo es, evaluar otro backend o una estrategia explícita;
+3. no introducir side-state oculto para fingir compatibilidad.
 
-La búsqueda semántica/textual sirve para descubrimiento de contexto desconocido, no como único mecanismo para resolver lifecycle/frontier de un Change conocido.
+### P4 — Known state debe tener recuperación verificable
 
-### P4 — Persistencia adaptativa
+Con identidad suficiente, recovery no puede depender de una elección probabilística del LLM.
 
-No toda tarea crea un Change.
+Un adapter puede usar una API denominada `search` si demuestra contractualmente que obtiene y valida una identidad exacta; el nombre de la API no define la semántica SDD.
 
-- `ephemeral`: no requiere record durable SDD;
-- `receipt`: trabajo material terminado deja un Change cerrado mínimo;
-- `continuity`: trabajo que debe sobrevivir deja un Change abierto con contexto suficiente para continuar.
+### P5 — Persistencia adaptativa
 
-Estos nombres pueden evolucionar, pero la diferencia semántica se conserva.
+```text
+ephemeral  -> no record SDD obligatorio
+receipt    -> Change cerrado mínimo cuando el resultado material merece trazabilidad
+continuity -> Change abierto cuando trabajo/intención deben sobrevivir
+```
 
-### P5 — Change no es unidad obligatoria de ejecución
-
-`Change` representa intención/evolución durable.
-
-`WorkUnit` solo se materializa si dividir la ejecución reduce carga cognitiva, permite continuidad o coordinación real. No se crea para cumplir una plantilla.
+No se persiste para demostrar que SDD participó.
 
 ### P6 — Evidence antes de completion
 
-Trabajo material no se considera completado solo porque el agente afirme que terminó.
+Un cambio material no queda completed por la afirmación del agente.
 
-La evidencia debe relacionarse con el contrato/aceptación relevante de forma proporcional al riesgo. El detalle de enforcement se define después; el principio no es opcional.
+La intensidad del evidence es proporcional al riesgo y a las condiciones observables de éxito.
 
 ### P7 — Host-native first
 
-SDD usa capacidades nativas del harness cuando cumplen correctamente la necesidad:
-
-- skill discovery;
-- repo navigation;
-- shell;
-- permisos;
-- subagentes;
-- modelos;
-- tool/MCP invocation.
-
-Solo agrega una abstracción propia cuando hace falta consistencia semántica o portabilidad entre hosts.
+Repo navigation, shell, tests, subagentes, skills y tool invocation permanecen en el host salvo una incompatibilidad semántica real.
 
 ### P8 — Progressive disclosure
 
-El executor normal recibe solo invariantes pequeñas y contexto relevante.
+El executor recibe solo invariantes/contexto que puedan cambiar la siguiente acción o decisión.
 
-Modelos, contratos extensos, skills especializadas y memoria histórica se cargan solo cuando cambian una decisión o la siguiente frontier.
+### P9 — Declarar el modelo de concurrencia; no inventarlo
 
-### P9 — No migration debt antes de estabilizar el modelo
+La primera Alpha no necesita prometer multi-writer concurrente sobre el mismo Change si el producto no lo soporta.
 
-Una implementación experimental puede descartarse.
+Debe declarar exactamente qué soporta, por ejemplo:
 
-No se diseña la nueva arquitectura alrededor de compatibilidad con Alpha.1. Migración se diseña cuando exista un modelo que merezca ser preservado.
+```text
+multiple agents / worktrees on independent Changes
+sequential handoff of one Change
+```
 
-### P10 — Tests deben poder falsar la arquitectura
+Las garantías de CAS, locks o multi-writer solo entran si ese modelo realmente las necesita.
 
-No basta comprobar que una función o string existe.
+No se puntúa como robusto un escenario que el producto no declara soportado.
 
-Las pruebas deben atacar propiedades como:
+### P10 — No migration debt antes de estabilizar
 
-- identidad única;
-- recovery exacto;
-- continuidad cross-session;
-- pérdida/reinicio del proceso;
-- concurrencia cuando aplique;
-- backend replacement;
+Una implementación experimental inválida se elimina. No condiciona el diseño nuevo.
+
+### P11 — Tests falsan arquitectura
+
+Las pruebas relevantes atacan propiedades, no strings de packaging:
+
+- recovery;
+- durability;
+- identity;
+- project isolation;
+- restart/new process;
 - evidence/closure;
+- el modelo de concurrencia declarado;
 - ausencia de ceremony en trabajo trivial.
 
----
+### P12 — Active-tree hygiene
 
-## 5. Autoridad canónica por tipo de información
+Git es el archivo histórico.
 
-| Información | Owner canónico | Observaciones |
-|---|---|---|
-| Código y configuración funcional de la aplicación | Repo del proyecto | SDD no duplica el código como memoria. |
-| `Change` durable | SDD logical model persistido vía Memory Contract | No archivo local paralelo como source of truth. |
-| Lifecycle/frontier/scope durable del Change | Mismo record/modelo SDD vía Memory Contract | Puede proyectarse, no duplicarse como autoridad. |
-| `Decision` material | SDD logical record vía Memory Contract | Solo si debe sobrevivir sesión/executor. |
-| `Evidence` durable | SDD logical record o parte explícita del Change según contrato | El detalle se cierra en Memory/Change Contract. |
-| `Knowledge` reusable del proyecto | SDD logical record vía Memory Contract | Diferente de una skill. |
-| `WorkUnit` | SDD logical record solo si se materializa | Experimental hasta validación. |
-| Configuración de SDD del proyecto | Binding/config local del proyecto | `project_id`, backend elegido, overrides mínimos. |
-| Versión/binding de SDD instalado | Manifest/bootstrap de proyecto | No contiene Change state. |
-| Capacidades del harness | Host adapter / host | No se copian al Change. |
-| Skills del stack/proyecto | Sistema de skills del host/proyecto | SDD no mantiene catálogo completo duplicado. |
-| Runtime rules de SDD | Distribución SDD + proyección mínima del adapter | No source of truth del estado del proyecto. |
-| Roadmap/timeline/Markdown | Proyecciones derivadas | Nunca autoridad operativa primaria. |
-
-### Consecuencia
-
-No existe este modelo:
+Cuando un camino queda invalidado:
 
 ```text
-state.json canonical Change
-        +
-Engram canonical Change
+preservar evidencia útil
+-> actualizar decisión canónica
+-> eliminar artefacto muerto
 ```
 
-La arquitectura objetivo es:
+No se mantienen implementaciones, docs o experiments solo “por si sirven después”.
+
+---
+
+## 5. Ownership
+
+| Información | Owner canónico |
+|---|---|
+| Código funcional de la app | repo consumidor |
+| Change durable | SDD Domain Model vía Memory Contract |
+| lifecycle/frontier/scope del Change | mismo record/modelo SDD |
+| Decision material | SDD record si necesita sobrevivir |
+| Evidence durable | Change y/o SDD record según el modelo |
+| Knowledge reusable | SDD record |
+| configuración mínima del binding | proyecto consumidor |
+| capacidades del harness | host |
+| skills stack/proyecto | host/proyecto |
+| runtime rules SDD | distribución SDD, no estado del proyecto |
+| roadmap/timeline/export | proyecciones, nunca autoridad |
+
+No existe:
 
 ```text
-SDD logical record
-      |
-      v
-Memory Contract
-      |
-      v
+state.json canonical
++
+Engram canonical
+```
+
+---
+
+## 6. Capas objetivo
+
+```text
+Host Agent / Harness
+        |
+        v
+SDD Runtime Projection       pequeña; solo reglas implementadas
+        |
+        v
+SDD Semantic API             operaciones de dominio
+        |
+        v
+SDD Domain Model             Change / Decision / Evidence / Knowledge
+        |
+        v
+Memory Contract              frontera durable
+        |
+        v
 Backend Adapter
-      |
-      +--> Engram (default candidate)
-      +--> otro backend
+        |
+        +--> Engram
+        +--> otro backend
 ```
 
-Un índice/cache local solo podría aparecer después si demuestra valor y si puede reconstruirse completamente desde la autoridad canónica.
+### Domain Model
+
+Define significado; no contiene MCP, Engram, SQLite, Codex ni filesystem.
+
+### Memory Contract
+
+Define la mínima semántica durable que el dominio realmente necesita.
+
+No debe convertirse en una base de datos distribuida “por las dudas”.
+
+### Backend Adapter
+
+Traduce el contrato a una dependencia externa mediante superficies soportadas.
+
+### Semantic API
+
+Evita que el LLM implemente manualmente lifecycle, persistence y closure.
+
+CLI/MCP/library son formas de exposición; ninguna es el dominio.
+
+### Host Adapter
+
+Solo wiring del harness: bootstrap, tool configuration y capabilities.
+
+### Runtime Projection
+
+Se diseña después del código. No promete mecanismos inexistentes.
+
+### Skills
+
+Una skill SDD solo entra con trigger y beneficio claros de progressive disclosure. No existe “una skill por concepto”.
 
 ---
 
-## 6. Capas del producto
+## 7. Frontera con Engram
 
-### 6.1 SDD Domain Model
-
-Define la semántica propia de SDD:
-
-- Change;
-- Decision;
-- Evidence;
-- Knowledge;
-- relaciones relevantes;
-- WorkUnit solo si termina validado.
-
-No contiene detalles de Engram, MCP, Codex, OpenCode o filesystem.
-
-### 6.2 Memory Contract
-
-Es la única puerta de persistencia durable para records SDD.
-
-Debe expresar capacidades semánticas mínimas y suficientes sin copiar la API completa de ningún backend.
-
-El detalle se revisa en la siguiente frontier.
-
-### 6.3 Memory Adapter
-
-Traduce el Memory Contract al backend concreto.
-
-Primer backend candidato: Engram, porque la infraestructura real ya demostró persistencia local y recovery cross-session.
-
-El adapter, no el LLM, resuelve representación, keys/selectors, compatibilidad y errores del backend.
-
-### 6.4 SDD Semantic API
-
-Expone operaciones de dominio al runtime/host, por ejemplo abrir, recuperar, actualizar o cerrar Changes y anexar records asociados.
-
-La forma concreta —library, CLI, MCP o combinación— se decide después del spike del Memory Contract.
-
-La API no debe convertirse en middleware de cada edición/comando normal.
-
-### 6.5 Host Adapter
-
-Resuelve wiring específico del harness:
-
-- bootstrap/instrucciones mínimas;
-- conexión con Memory/SDD API;
-- capabilities reales del host;
-- integración con skills nativas;
-- configuración MCP/plugin cuando corresponda.
-
-No contiene el modelo de Change.
-
-### 6.6 Runtime Projection
-
-Es la cantidad mínima de semántica que el agente necesita siempre activa.
-
-Debe permanecer pequeña y derivar de contratos ya implementados. No puede prometer mecanismos que el producto todavía no soporta.
-
-### 6.7 Skills / Protocol Modules
-
-Son un mecanismo opcional de progressive disclosure, no una capa obligatoria por concepto.
-
-Una skill SDD solo existe si:
-
-- contiene instrucciones condicionales sustanciales;
-- su carga always-on sería un costo real;
-- necesita recursos/scripts propios; o
-- puede evolucionar de forma independiente y su activación tiene un trigger claro.
-
-La cantidad y nombres actuales de Alpha.1 no son decisiones arquitectónicas.
-
----
-
-## 7. Frontera SDD ↔ Host
-
-### El host posee
-
-- edición del repo;
-- lectura/búsqueda del código;
-- shell y test runners;
-- tool invocation;
-- permisos;
-- subagentes y paralelismo disponible;
-- selección de modelos;
-- mecanismo nativo de Agent Skills;
-- contexto conversacional de la sesión.
-
-### SDD posee
-
-- cuándo el trabajo merece estado durable SDD;
-- semántica de Change y records relacionados;
-- continuidad durable independiente de la conversación;
-- material decision boundary como contrato SDD;
-- evidence/closure semantics;
-- recuperación semántica del estado SDD conocido;
-- portabilidad de esas reglas entre harnesses.
-
-### Regla
-
-SDD no sustituye una capacidad del host solo para hacerla uniforme.
-
-La uniformidad se implementa únicamente donde afecta semántica SDD. Por ejemplo, distintos hosts pueden descubrir skills de manera diferente sin que SDD necesite crear un catálogo universal propio.
-
----
-
-## 8. Frontera SDD ↔ Memory
-
-Memory es persistencia, no workflow.
-
-SDD define:
-
-- qué record existe;
-- qué significa;
-- qué identidad lógica tiene;
-- qué operaciones necesita;
-- qué información merece persistencia.
-
-El backend define:
-
-- cómo almacena;
-- índices físicos;
-- transporte;
-- formato interno;
-- capacidades específicas adicionales.
-
-### Engram
-
-Engram se mantiene como backend default candidato porque el dogfood demostró:
+Engram es el primer backend candidato porque el dogfood ya demostró:
 
 - persistencia real;
-- supervivencia a restart/down-up;
-- uso mediante MCP;
+- restart/down-up;
+- MCP funcional;
 - recovery cross-session.
 
-Pero esas pruebas validan **infraestructura de memoria**, no que las observation types, FTS, topic keys o herramientas nativas de Engram sean el modelo de SDD.
+Eso valida Engram como infraestructura de memoria, no todas las semánticas de SDD.
 
-Para records canónicos SDD:
+Ruta canónica:
 
 ```text
 Agent
   -> SDD semantic operation
   -> Memory Contract
   -> Engram Adapter
-  -> Engram
+  -> Engram public/supported surface
+```
+
+Para contexto no canónico, el host puede seguir usando herramientas generales de Engram directamente si aportan valor.
+
+### Regla de incompatibilidad
+
+Si una operation SDD no puede implementarse limpiamente:
+
+```text
+¿es una garantía necesaria para el modelo de ejecución declarado?
+  no  -> simplificar contrato
+  sí  -> backend no conforma / evaluar alternativa
 ```
 
 No:
 
 ```text
-Agent
-  -> inventa formato/topic/search
-  -> Engram MCP directo
+modificar Engram
+crear state.json paralelo
+leer tablas privadas
+parsear salida humana
 ```
 
-El agente puede seguir usando herramientas genéricas del host/memory para contexto no canónico cuando aporte valor, pero eso no reemplaza las operaciones semánticas SDD.
+como solución silenciosa.
 
 ---
 
-## 9. Frontera SDD ↔ Skills
+## 8. Frontera global ↔ proyecto
 
-### Skills SDD
+### Distribución global
 
-Describen procedimientos condicionales propios de SDD cuando su complejidad justifica carga on-demand.
+Candidatos:
 
-No son automáticamente equivalentes a entidades del modelo.
-
-`Change`, `Recovery`, `Verification`, `Coordination` o `Evolution` pueden terminar siendo skills, runtime rules, API operations o combinaciones. Alpha.1 no decide ese packaging para la nueva arquitectura.
-
-### Skills de proyecto/stack
-
-Laravel, React, Tailwind, testing, seguridad específica del proyecto, etc. pertenecen al proyecto/harness.
-
-SDD debe aprovechar discovery nativo y cargar solo lo relevante.
-
-### Knowledge
-
-Knowledge no es una skill:
-
-- Skill: procedimiento reusable — “cómo trabajar con X”.
-- Knowledge: hecho aprendido de este proyecto — “este repo usa `tag_ticket`”.
-- Repo: realidad actual del código.
-- Change: intención de cambio.
-
-No duplicar esas cuatro fuentes.
-
----
-
-## 10. Frontera global ↔ proyecto
-
-### Global / distribución SDD
-
-Candidatos naturales:
-
-```text
-SDD executable/library
-Memory Contract implementation
-Memory adapters
-Host adapters
-Schemas
-Evals / conformance tests
-SDD protocol skills justificadas
-```
+- Semantic API/library;
+- Domain Model;
+- Memory Contract;
+- memory adapters;
+- host adapters;
+- schemas;
+- conformance/eval tests;
+- skills SDD que hayan demostrado necesidad.
 
 ### Proyecto consumidor
 
-Debe contener solamente binding reproducible y overrides necesarios, por ejemplo:
+Solo binding reproducible y overrides mínimos:
+
+- project identity;
+- backend elegido/config;
+- version pin si aporta reproducibilidad;
+- host bootstrap mínimo.
+
+No historial de Changes en files ni copia completa del framework.
+
+---
+
+## 9. Árbol activo durante la reconstrucción
+
+Hasta que un nuevo componente sea aprobado, la línea activa se reduce deliberadamente a:
 
 ```text
-project_id
-backend/config seleccionado
-runtime/version pin si aporta reproducibilidad
-host bootstrap mínimo
-project-specific overrides
+README.md
+docs/
+  rebaseline-architecture.md
+  memory-contract.md
+  change-model.md
+  dogfood-evidence.md
+experiments/
+  README.md
+infra/
+  engram/
 ```
 
-No debe contener por defecto:
+`memory-contract.md` y `change-model.md` siguen sujetos a reconciliación durante las siguientes frontiers.
 
-- copia completa de la metodología;
-- historial de Changes en files;
-- todos los documentos de diseño de SDD;
-- catálogo completo de skills globales;
-- state operativo paralelo a Memory Contract.
-
-Un modo vendored/workspace puede existir para reproducibilidad o hosts limitados, pero es una **estrategia de distribución**, no otra semántica del producto.
+No existe implementación productiva temporal para “mantener funcionando” Alpha.1.
 
 ---
 
-## 11. Componentes requeridos antes de otra Alpha
+## 10. Qué fue eliminado deliberadamente
 
-Estos componentes tienen justificación arquitectónica suficiente para ser candidatos obligatorios:
+La reconstrucción no conserva en el árbol activo:
 
-1. **Change Model revisado** — semántica, identidad y contenido adaptable.
-2. **Memory Contract revisado** — única frontera de persistencia durable SDD.
-3. **Engram Adapter real** — demuestra que backend-independence existe en código.
-4. **Semantic API mínima** — operaciones de Change/records sin exigir que el LLM implemente el adapter.
-5. **Host adapter mínimo** — inicialmente Codex, sin meter semántica de dominio en el wiring.
-6. **Runtime projection mínima** — solo después de que las operaciones que menciona existan realmente.
-7. **Conformance/eval tests** — prueban invariantes contra el backend real o un contract-compatible test backend.
+- Alpha.1 CLI/control-state;
+- allocator local;
+- runtime/kernel Alpha.1;
+- manifest/config templates Alpha.1;
+- cuatro skills SDD Alpha.1;
+- resolver de skills Alpha.1;
+- adapter Codex Alpha.1;
+- tests que validaban ese producto;
+- package metadata de la release invalidada;
+- release/layout/migration docs de Alpha.1;
+- Router `direct|compact|full` como contrato activo;
+- WorkUnit model experimental;
+- Evolution/WorkflowSignal contract experimental;
+- antiguo Execution Contract acoplado a WorkUnit/skills;
+- experiments viejos de router y Engram adapter;
+- documentos F4/F5 que proponían extender/forkear Engram.
 
-CLI, MCP y skills son formas de exposición/distribución de esos componentes; no son por sí mismos el modelo.
-
----
-
-## 12. Componentes experimentales o diferidos
-
-No forman parte del mínimo requerido para la próxima Alpha:
-
-- `WorkUnit` persistido;
-- DAG/scheduler propio;
-- `sdd-coordinate` como skill obligatoria;
-- `direct | compact | full` como contrato estable;
-- Evolution/WorkflowSignal en hot path;
-- roadmap persistido;
-- exporters avanzados;
-- CodeGraph obligatorio;
-- multi-host completo;
-- migration desde Alpha.1;
-- skill registry propio si el host ya resuelve discovery adecuadamente;
-- session summaries como primitive SDD.
-
-Pueden conservarse en `docs/` o `experiments/`, pero no deben condicionar el núcleo hasta que exista evidencia.
+La evidencia relevante no se pierde: Git conserva el historial y `dogfood-evidence.md` conserva observaciones empíricas.
 
 ---
 
-## 13. Tratamiento de `0.2.0-alpha.1`
-
-`0.2.0-alpha.1` se clasifica como **experimento fallido de implementación, con evidencia útil**.
-
-### Lo que aportó
-
-- confirmó que un micro-kernel pequeño no impide resolver un cambio cosmético de forma directa;
-- mostró que no toda tarea necesita Change/memory;
-- permitió probar lifecycle explícito desde CLI;
-- expuso rápidamente problemas de ownership, durability e identidad;
-- produjo evidencia concreta para mejorar los tests arquitectónicos.
-
-### Lo que NO se hereda como obligación
-
-- `.sdd/state.json` como store/control authority;
-- `lib/control-state.mjs` como núcleo del modelo;
-- current Change allocator;
-- las cuatro skills actuales como packaging definitivo;
-- la distribución project-local actual;
-- el closure gate basado únicamente en presencia de un string;
-- migration compatibility con Alpha.1.
-
-### Estado del código Alpha.1
-
-No se borra durante esta frontier. Queda congelado como material de comparación hasta que el nuevo diseño indique qué reemplaza cada pieza.
-
-No se agregan nuevos parches funcionales sobre Alpha.1 salvo una necesidad de preservar evidencia o seguridad del repositorio.
-
----
-
-## 14. Arquitectura objetivo
+## 11. Orden de reconstrucción
 
 ```text
-                         User request
-                              |
-                              v
-                   Host Agent / Harness
-                 (Codex / OpenCode / ...)
-                              |
-                    tiny host bootstrap
-                              |
-                              v
-                  SDD Runtime Projection
-                 (small, implemented rules)
-                              |
-                              v
-                     SDD Semantic API
-                  /          |           \
-                 /           |            \
-            Change       Decisions      Evidence/Knowledge
-              Model        Model              Model
-                 \           |              /
-                  \          |             /
-                       Memory Contract
-                              |
-                  +-----------+-----------+
-                  |                       |
-             Engram Adapter          Other Adapter
-                  |                       |
-                Engram                 Backend
-
-Host-native side channels:
-- repo/context search
-- shell/tests
-- subagents
-- project/stack skills
-- optional context providers
+F1  Architecture ownership                    DONE
+F2  Memory Contract                           REOPENED
+F3  Change Model                              reconcile after F2
+F4  Active-tree cleanup                       CURRENT
+F5  Real adapter spike against public Engram
+F6  Semantic API
+F7  minimal host/runtime integration
+F8  skills individually, only if justified
+F9  pre-dogfood conformance gate
+DOGFOOD
 ```
 
-### Lectura del diagrama
+F2 se reabre porque la primera revisión convirtió demasiado pronto una solución candidata —database-grade CAS/create-if-absent— en requisito universal.
 
-- El host ejecuta trabajo.
-- SDD aporta semántica durable y contratos.
-- La Semantic API evita que el modelo implemente manualmente la persistencia.
-- El Memory Contract mantiene el dominio independiente del backend.
-- Engram es un adapter/backend default, no el modelo.
-- Skills/context providers complementan la ejecución; no sustituyen la autoridad SDD.
+Eso debe corregirse antes del adapter.
 
 ---
 
-## 15. Condiciones para modificar runtime/código de producto
-
-No se modifica `runtime/`, `cli/`, `lib/control-state.mjs` ni las skills actuales como parte de esta frontier.
-
-Antes de reconstruir runtime deben cerrarse, en orden:
-
-### Frontier 2 — `docs/memory-contract.md`
-
-Debe responder:
-
-- operaciones realmente necesarias;
-- exact lookup/query semantics;
-- error/failure semantics;
-- update/upsert identity;
-- backend capabilities mínimas;
-- cómo se prueba un adapter;
-- qué ocurre si Engram no puede satisfacer una primitive.
-
-### Frontier 3 — `docs/change-model.md`
-
-Debe reconciliar Change con el Memory Contract revisado:
-
-- identidad;
-- lifecycle;
-- intent;
-- acceptance/contract boundary;
-- frontier/continuity;
-- relations materiales;
-- receipt;
-- cierre/evidence.
-
-### Frontier 4 — adapter spike
-
-Máximo pocos archivos activos. Debe probar con backend real:
-
-- create/upsert Change;
-- exact get por identidad/key;
-- structured list/query de Changes abiertos;
-- update de frontier;
-- append/associate Decision/Evidence;
-- close y recuperación posterior;
-- failure behavior;
-- reinicio/cross-session;
-- comportamiento ante concurrencia relevante al backend.
-
-Si Engram no puede cumplir el contrato sin hacks frágiles de FTS/parsing, se revisa el adapter/backend. **No se introduce un file store paralelo para ocultar la carencia.**
-
-Solo después se diseña Semantic API/CLI/runtime.
-
----
-
-## 16. Condiciones para volver a dogfood
-
-El siguiente dogfood sobre la app helpdesk comienza únicamente cuando el producto supera dos gates.
-
-### 16.1 Gate estructural
-
-No puede existir ninguno de estos defectos conocidos:
-
-- autoridad canónica duplicada;
-- Change durable almacenado únicamente en un file local ignorado;
-- agente actuando como serializer/adapter de Engram;
-- recovery de un Change conocido basado solo en fuzzy search;
-- continuity sin operación real para recuperar/actualizar frontier;
-- cierre material validado únicamente por presencia de texto arbitrario;
-- identidad incapaz de soportar el modelo de concurrencia declarado;
-- skill presente sin trigger/beneficio claro;
-- runtime prometiendo un mecanismo que el producto no implementa;
-- migration ocupando prioridad antes de estabilizar el modelo.
-
-### 16.2 Gate de calidad
+## 12. Quality gate antes de dogfood
 
 Baseline histórico de Alpha.1:
 
-| Área | Alpha.1 |
-|---|---:|
-| Legibilidad del código | 6/10 |
-| Simplicidad local | 6/10 |
-| Fidelidad al rebaseline | 3/10 |
-| Correctness del modelo de estado | 3/10 |
-| Durabilidad/continuidad real | 2/10 |
-| Robustez multi-agent/multi-worktree | 2/10 |
-| Madurez como producto | 2–3/10 |
+| Área | Alpha.1 | Gate |
+|---|---:|---:|
+| Legibilidad del código | 6/10 | 8/10 |
+| Simplicidad local | 6/10 | 8/10 |
+| Fidelidad al diseño | 3/10 | 8.5/10 |
+| Correctness del estado | 3/10 | 9/10 |
+| Durabilidad/continuidad | 2/10 | 8.5/10 |
+| Robustez multi-agent/worktree | 2/10 | 8/10 |
+| Madurez producto | 2–3/10 | 7.5/10 |
 
-Objetivo mínimo antes de reinstalar en dogfood:
+Las notas solo resumen evidencia.
 
-| Área | Gate mínimo |
-|---|---:|
-| Legibilidad del código | 8/10 |
-| Simplicidad local | 8/10 |
-| Fidelidad al diseño/rebaseline | 8.5/10 |
-| Correctness del modelo de estado | 9/10 |
-| Durabilidad/continuidad real | 8.5/10 |
-| Robustez multi-agent/multi-worktree | 8/10 |
-| Madurez como producto | 7.5/10 |
+El gate estructural manda:
 
-Las notas no sustituyen evidencia. Son un resumen de la revisión. El gate estructural y pruebas falsables tienen prioridad.
-
-### 16.3 Escenarios mínimos antes/durante dogfood
-
-El núcleo debe demostrar al menos:
-
-1. **ephemeral:** cambio cosmético sin Change/memory innecesaria;
-2. **receipt:** capability material completa con Change durable recuperable;
-3. **continuity:** backend ahora/UI después, nuevo chat recupera frontier exacta sin repetir prompt;
-4. **multiple open Changes:** lookup determinista del Change correcto;
-5. **verification mutation:** implementación incompleta no se considera correctamente cerrada;
-6. **restart/new checkout behavior:** el estado durable necesario no depende de un archivo local accidental;
-7. **concurrency scenario:** dos actores no pueden crear identidad incompatible bajo el modelo soportado;
-8. **backend contract:** adapter real cumple el mismo contrato que el backend de test.
-
-Solo entonces la reconstrucción merece una nueva etiqueta Alpha.
+- una autoridad durable;
+- recovery verificable;
+- adapter real;
+- no side-state autoritativo;
+- closure ligada a evidence;
+- modelo de concurrencia explícito y probado;
+- no skill/runtime sin responsabilidad demostrada;
+- no migration antes de baseline estable.
 
 ---
 
-## 17. Frontier activa y siguiente paso
+## 13. Próxima frontier
 
-### Frontier 1 — cerrada por este documento cuando sea aprobada
+Después de la poda del árbol:
 
-**Archivo:** `docs/rebaseline-architecture.md`
+**solo `docs/memory-contract.md`.**
 
-**Decisión:** frontera de producto, ownership y orden de reconstrucción.
+Preguntas:
 
-### Siguiente frontier
+1. ¿qué operaciones necesita realmente `ephemeral/receipt/continuity`?
+2. ¿qué recovery exacto puede garantizarse mediante un adapter real?
+3. ¿qué modelo de concurrencia declara la primera Alpha?
+4. ¿qué garantías fuertes son core y cuáles capacidades opcionales?
+5. ¿cómo usar Engram sin modificarlo ni convertir detalles físicos en semántica SDD?
 
-**Único archivo activo:** `docs/memory-contract.md`.
-
-No modificar todavía:
-
-```text
-runtime/*
-cli/*
-lib/*
-skills/*
-adapters/*
-tests/*
-```
-
-La siguiente pregunta es solamente:
-
-> ¿Qué contrato de memoria necesita SDD para mantener un Change durable, exacto y backend-independent sin reintroducir un file store ni convertir al LLM en adapter?
+No se escribe adapter hasta cerrar esas cinco respuestas.

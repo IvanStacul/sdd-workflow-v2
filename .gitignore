@@ -3,3 +3,6 @@ experiments/**/output/
 
 # Node experiment dependencies
 experiments/**/node_modules/
+
+# Local Engram runtime configuration
+infra/engram/.env

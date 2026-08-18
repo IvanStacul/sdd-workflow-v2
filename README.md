@@ -1,123 +1,97 @@
-# SDD Workflow V2 — Rebaseline Alpha
+# SDD Workflow V2 — Reconstruction
 
-SDD V2 es un **control plane pequeño para desarrollo asistido por agentes**, no una cadena obligatoria de fases ni un reemplazo de Codex/OpenCode/u otros harnesses.
+SDD V2 está en **reconstrucción arquitectónica**.
 
-Versión actual: **`0.2.0-alpha.1`**.
+No hay actualmente una Alpha de producto considerada válida para instalar o dogfoodear. `0.2.0-alpha.1` fue invalidada como baseline: su implementación file-based de control state, su CLI y el packaging de skills no forman parte de la línea activa.
 
-## Qué cambió en el rebaseline
+La historia permanece disponible en Git y la evidencia empírica relevante permanece en `docs/dogfood-evidence.md`. El árbol activo contiene solo decisiones y componentes que siguen siendo candidatos reales.
 
-El dogfood de Alpha.1–Alpha.5 validó Engram + recovery cross-session, pero también mostró que demasiada semántica de SDD dependía de que el LLM interpretara correctamente `kernel.md`, `memory.md` y `AGENTS.md`.
+## Objetivo
 
-`0.2.0-alpha.1` mueve las garantías más importantes a mecanismos explícitos:
+Conservar las garantías útiles de Spec-Driven Development —intención durable, continuidad, decisiones materiales, scope control y verificación— con menos ceremony y sin reconstruir capacidades que ya ofrecen Codex, OpenCode u otros harnesses.
 
-- micro-kernel always-loaded, sin `direct | compact | full` como taxonomía obligatoria;
-- `.sdd/state.json` como **control index determinista** para identidad/lifecycle de Changes;
-- CLI real para `status`, `change open/bind/close/list`;
-- cierre `completed` rechazado si no existe evidencia observada;
-- SDD protocols como Agent Skills on-demand: `sdd-change`, `sdd-recovery`, `sdd-verify`, `sdd-coordinate`;
-- fallback `sdd-v2 skills --json` que descubre solo metadata, no carga bodies;
-- `runtime/memory.md` deja de distribuirse: Change/recovery/verification ya no crecen dentro del kernel;
-- Engram continúa como backend durable para semántica/historia, Decisions, Evidence y Knowledge;
-- update desde Alpha.5 crea control schema `1` sin migrar/rewrite masivo de memory schema `1`.
-
-## Principio operativo
+Arquitectura objetivo:
 
 ```text
-request
-  -> minimum relevant context
-  -> executable frontier
-  -> ACT
-  -> proportional evidence
-  -> persist only what must survive
-  -> close or continue
+Host Agent
+   |
+   v
+SDD Semantic API
+   |
+   v
+SDD Domain Model
+   |
+   v
+Memory Contract
+   |
+   v
+Backend Adapter
+   |
+   +--> Engram (primer candidato externo)
+   +--> otro backend
 ```
 
-No existe una cadena obligatoria `proposal -> spec -> design -> tasks -> apply -> verify`.
+Engram es una dependencia externa. SDD no modifica ni mantiene un fork de Engram para hacer encajar su arquitectura.
 
-## Layout instalado
+## Fuentes activas
 
 ```text
-my-app/
-├── .sdd/
-│   ├── config.json          # project-owned
-│   ├── manifest.json        # managed version/schema metadata
-│   ├── state.json           # persistent machine control state
-│   └── runtime/
-│       └── kernel.md        # tiny always-loaded contract
-├── .agents/
-│   └── skills/
-│       ├── sdd-change/
-│       ├── sdd-recovery/
-│       ├── sdd-verify/
-│       └── sdd-coordinate/
-├── .codex/config.toml       # Codex adapter + Engram MCP
-└── AGENTS.md                # tiny SDD bootstrap section + project content
+docs/rebaseline-architecture.md  frontera y principios del producto
+docs/memory-contract.md          contrato en revisión activa
+docs/change-model.md             modelo en revisión activa
+docs/dogfood-evidence.md         evidencia empírica
 ```
 
-## CLI
+`memory-contract.md` y `change-model.md` siguen activos, pero deben reconciliarse con la política actual: no exigir garantías de storage que no hayan demostrado ser necesarias para el modelo de ejecución soportado.
 
-```bash
-sdd-v2 init . --project-id my-project
-sdd-v2 update . --dry-run
-sdd-v2 update .
+## Estado del producto
 
-sdd-v2 status . --json
-sdd-v2 skills . --json
+Temporalmente **no existen** en la línea activa:
 
-sdd-v2 change open ticket-tags --intent "Agregar tags a tickets"
-sdd-v2 change bind CHG-20260817-01 <engram-observation-ref>
-sdd-v2 change close CHG-20260817-01 --reason completed --evidence "15 tests / 76 assertions PASS"
-```
+- CLI SDD productivo;
+- runtime kernel distribuible;
+- control state local;
+- skills SDD obligatorias;
+- host adapter productivo;
+- suite de tests de Alpha.1;
+- migration desde Alpha.1.
 
-`change close --reason completed` falla cerrado cuando no recibe `--evidence` o `--evidence-ref`.
+Se reintroduce una pieza solo cuando su responsabilidad esté cerrada y pueda probarse de forma falsable.
 
 ## Engram
 
-Engram 1.20.0 + Docker MCP fue validado durante el dogfood real. SDD conserva `.sdd/config.json.project_id` como identidad del proyecto y el adapter Codex configura:
+La infraestructura Docker validada se conserva en:
 
 ```text
-docker exec -i -e ENGRAM_PROJECT=<project-id> sdd-engram engram mcp --tools=agent
+infra/engram/
 ```
 
-Engram session lifecycle/session summaries no son requisitos de continuidad SDD.
+El siguiente trabajo de integración debe usar exclusivamente superficies públicas/soportadas de Engram. Si una primitive del Memory Contract no puede implementarse limpiamente, primero se decide si esa primitive es realmente necesaria o si Engram no es el backend apropiado.
 
-## Skills
+No se resuelve la incompatibilidad mediante:
 
-SDD distingue:
+- un fork SDD de Engram;
+- acceso al schema SQLite privado de Engram;
+- `.sdd/state.json` como segunda autoridad;
+- parsing de output humano;
+- FTS tratado como lookup exacto sin verificación contractual.
 
-- **SDD protocol skills**: controlan Change/recovery/verification/coordination;
-- **project/stack skills**: Laravel, React, testing, UI, etc.;
-- **Project Knowledge**: hechos reusables aprendidos del repo/entorno;
-- **repo context**: estado real del código.
+## Disciplina del árbol activo
 
-El host debe usar progressive disclosure. No se carga el catálogo completo para cada request.
+Git es el archivo histórico.
 
-## Update desde Alpha.5
+Cuando una hipótesis o implementación queda invalidada:
 
-`0.2.0-alpha.1` mantiene config schema `1` y memory schema `1`. Agrega control schema `1` con migración soportada:
+1. extraer la evidencia que todavía importa;
+2. actualizar la decisión canónica que la reemplaza;
+3. eliminar el artefacto invalidado del árbol activo.
 
-```text
-Alpha.5
-  .sdd/runtime/kernel.md
-  .sdd/runtime/memory.md
-       |
-       v
-0.2.0-alpha.1
-  .sdd/runtime/kernel.md
-  .sdd/state.json
-  .agents/skills/sdd-*
-```
+No se crean carpetas `legacy/`, `deprecated/`, `old/` o documentos tombstone solo para conservar código muerto.
 
-`runtime/memory.md` legacy se elimina porque pertenecía al runtime managed. `.sdd/config.json` se preserva completa, incluyendo claves legacy desconocidas.
+## Próxima frontier
 
-## Validación
+Revisar **solo `docs/memory-contract.md`**.
 
-```bash
-npm test
-```
+Objetivo: separar las garantías realmente necesarias para la primera Alpha de garantías fuertes de concurrencia que todavía no están justificadas, manteniendo Engram como dependencia externa y sin perder exactitud de recovery ni una sola autoridad durable.
 
-La suite actual valida comportamiento de control state, lifecycle, closure gate, migration e skill discovery además de proyección runtime.
-
-## Próximo dogfood
-
-No agregar más reglas por defecto. El siguiente paso es comparar Alpha.5 vs rebaseline sobre los mismos casos: cosmetic, receipt material, continuity recovery, múltiples Changes abiertos, verification mutation y knowledge reuse. Ver `docs/rebaseline-architecture.md` y `docs/dogfooding.md`.
+Después se reconcilia `docs/change-model.md` y recién entonces se crea un adapter spike real.

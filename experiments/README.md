@@ -1,31 +1,50 @@
 # Experiments
 
-Código exploratorio usado para validar hipótesis de SDD V2 antes de incorporarlas al runtime.
+`experiments/` contiene únicamente hipótesis **activas** que todavía necesitan evidencia antes de entrar al producto.
 
-## Regla de frontera
+No es archivo histórico.
 
-`experiments/` pertenece al repositorio de desarrollo de SDD V2, pero **no forma parte del runtime ni de los archivos que se instalan en proyectos consumidores**.
+## Regla
 
-Un experimento puede:
+Un experimento debe declarar:
 
-- probar una integración o contrato;
-- medir costo/complejidad;
-- descubrir limitaciones de una dependencia;
-- producir evidencia para aceptar, modificar o descartar una decisión.
+- pregunta que intenta falsar;
+- archivos activos;
+- criterio de éxito/fallo;
+- qué decisión puede cambiar con el resultado.
 
-Un experimento no debe:
+No puede:
 
-- convertirse en dependencia del hot path por accidente;
-- definir semántica canónica del workflow;
-- ser instalado en repositorios consumidores;
-- mantenerse indefinidamente cuando ya no aporta evidencia.
+- convertirse en dependencia del hot path;
+- definir semántica canónica por accidente;
+- instalarse en repos consumidores;
+- mantenerse cuando la pregunta ya fue resuelta o invalidada.
 
 ## Lifecycle
 
-Cuando una hipótesis se estabiliza:
+```text
+crear experimento
+-> medir
+-> decisión
+   -> promover mínima pieza necesaria
+   -> o descartar
+-> eliminar experimento
+```
 
-1. extraer solo la parte mínima necesaria hacia el runtime/tests/docs definitivos;
-2. conservar el experimento si sigue aportando valor como evidencia o benchmark;
-3. eliminarlo si ya quedó completamente reemplazado.
+Git conserva su historia.
 
-Los outputs generados durante pruebas no se versionan salvo que se conviertan explícitamente en fixtures/golden files.
+No crear:
+
+```text
+experiments/old/
+experiments/archive/
+experiments/deprecated/
+```
+
+para retener código muerto.
+
+Si el resultado importa después de borrar el spike, transferir únicamente la evidencia/decisión necesaria al documento canónico correspondiente o a `docs/dogfood-evidence.md`.
+
+## Outputs
+
+`output/` y dependencias locales no se versionan salvo que un resultado se convierta deliberadamente en fixture/golden file.
