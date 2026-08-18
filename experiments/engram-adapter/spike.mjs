@@ -13,8 +13,11 @@ const keepData = process.env.SDD_SPIKE_KEEP_DATA === '1';
 const container = process.env.ENGRAM_CONTAINER || 'sdd-engram';
 
 const runId = `${Date.now()}-${randomBytes(3).toString('hex')}`;
-const projectA = `sdd-v2-adapter-spike-a-${runId}`.toLowerCase();
-const projectB = `sdd-v2-adapter-spike-b-${runId}`.toLowerCase();
+
+// Deliberately use mixed case and repeated separators. Logical project identity
+// must survive even though Engram normalizes its physical project names.
+const projectA = `SDD-V2--Adapter-Spike-A-${runId}`;
+const projectB = `sdd_V2__Adapter_Spike_B_${runId}`;
 
 const transport = new DockerEngramHttpTransport({ container });
 const adapterA = new EngramHttpAdapter({
@@ -26,8 +29,8 @@ const adapterB = new EngramHttpAdapter({
   transport,
 });
 
-const created = [];
-const adaptersWithSessions = new Set();
+const cleanupEntries = [];
+const knownAdapters = new Set([adapterA, adapterB]);
 
 function record(projectId, id, title, intent, next) {
   return {
@@ -49,23 +52,37 @@ function record(projectId, id, title, intent, next) {
 }
 
 async function putTracked(adapter, item) {
-  const result = await adapter.put(item);
-  created.push({ adapter, ref: refOf(item) });
-  if (adapter.sessionCreated) {
-    adaptersWithSessions.add(adapter);
+  knownAdapters.add(adapter);
+  cleanupEntries.push({ adapter, ref: refOf(item) });
+
+  try {
+    return await adapter.put(item);
+  } finally {
+    knownAdapters.add(adapter);
   }
-  return result;
 }
 
-async function main() {
-  console.log(`F5 Engram adapter spike`);
+async function runScenario() {
+  console.log('F5 Engram adapter spike — audited endpoint contract');
   console.log(`container: ${container}`);
-  console.log(`project A: ${projectA}`);
-  console.log(`project B: ${projectB}`);
+  console.log(`logical project A: ${projectA}`);
+  console.log(`logical project B: ${projectB}`);
   console.log('');
 
   const health = await adapterA.health();
   console.log(`PASS A0 health: ${health.service} ${health.status}`);
+
+  await adapterA.probeCleanupAccess();
+  console.log('PASS A0.1 protected cleanup routes accessible');
+
+  const emptyList = await adapterA.list({
+    project_id: projectA,
+    kind: 'change',
+    limit: 20,
+  });
+  assert.equal(emptyList.items.length, 0);
+  assert.equal(emptyList.complete, true);
+  console.log('PASS A0.2 empty observation collection normalizes to []');
 
   const id1 = `CHG-${ulid()}`;
   const id2 = `CHG-${ulid()}`;
@@ -74,13 +91,13 @@ async function main() {
     projectA,
     id1,
     'Adapter exact recovery A',
-    'Demostrar put/get exacto sobre Engram público.',
+    'Preservar literalmente <private>not-a-secret-test-token</private> dentro del Change.',
     'Actualizar la frontier y recuperar desde una nueva instancia.',
   );
 
   const put1 = await putTracked(adapterA, first);
   assert.deepEqual(stripTimes(put1.record), first);
-  console.log('PASS A1 put/get round-trip');
+  console.log('PASS A1 put/get round-trip incl. Engram private-tag transform boundary');
 
   const recovered1 = await adapterA.get(refOf(first));
   assert.deepEqual(stripTimes(recovered1.record), first);
@@ -92,15 +109,20 @@ async function main() {
     'Crear una instancia nueva del adapter y comprobar la frontier actualizada.';
 
   const put2 = await adapterA.put(updated);
-  assert.equal(put2.record.payload.continuity.next, updated.payload.continuity.next);
+  assert.equal(
+    put2.record.payload.continuity.next,
+    updated.payload.continuity.next,
+  );
 
   const freshAdapterA = new EngramHttpAdapter({
     projectId: projectA,
     transport: new DockerEngramHttpTransport({ container }),
   });
+  knownAdapters.add(freshAdapterA);
+
   const freshRecovery = await freshAdapterA.get(refOf(updated));
   assert.deepEqual(stripTimes(freshRecovery.record), updated);
-  console.log('PASS A2 sequential update + fresh adapter recovery');
+  console.log('PASS A2 sequential PATCH + fresh adapter recovery');
 
   const similar = record(
     projectA,
@@ -119,24 +141,52 @@ async function main() {
   );
   console.log('PASS A3 similar records do not break exact identity');
 
-  const listed = await adapterA.list({
+  const listedSmall = await adapterA.list({
     project_id: projectA,
     kind: 'change',
-    limit: 19,
+    limit: 20,
   });
-  const ids = new Set(listed.items.map((item) => item.record.id));
-  assert(ids.has(id1));
-  assert(ids.has(id2));
-  assert.equal(listed.complete, true);
+  const smallIds = new Set(
+    listedSmall.items.map((item) => item.record.id),
+  );
+  assert(smallIds.has(id1));
+  assert(smallIds.has(id2));
+  assert.equal(listedSmall.complete, true);
   console.log(
-    `PASS A5 bounded list: ${listed.items.length} item(s), complete=${listed.complete}`,
+    `PASS A5 bounded list complete: ${listedSmall.items.length} item(s)`,
+  );
+
+  // Fill the canonical bucket beyond the declared scan bound. This proves the
+  // adapter reports incompleteness instead of silently presenting a truncated
+  // set as "all Changes".
+  for (let i = 0; i < 19; i += 1) {
+    const extra = record(
+      projectA,
+      `CHG-${ulid(Date.now() + i + 1)}`,
+      `Bound sentinel ${i + 1}`,
+      'Ejercitar bounded list.',
+      'Ninguna; record de prueba.',
+    );
+    await putTracked(adapterA, extra);
+  }
+
+  const listedBounded = await adapterA.list({
+    project_id: projectA,
+    kind: 'change',
+    limit: 20,
+  });
+  assert.equal(listedBounded.items.length, 20);
+  assert.equal(listedBounded.complete, false);
+  assert.equal(listedBounded.project_scan_complete, false);
+  console.log(
+    'PASS A5.1 list over bound reports complete=false instead of truncating silently',
   );
 
   const sameIdOtherProject = record(
     projectB,
     id1,
     'Same logical id, other project',
-    'Demostrar aislamiento de proyecto.',
+    'Demostrar aislamiento incluso con logical project IDs que Engram normalizaría.',
     'No mezclar project B con project A.',
   );
   await putTracked(adapterB, sameIdOtherProject);
@@ -149,37 +199,65 @@ async function main() {
     isolatedA.record.payload,
     isolatedB.record.payload,
   );
-  console.log('PASS A6 project isolation');
+  console.log('PASS A6 logical project isolation survives Engram normalization');
 
   const ambiguousId = `CHG-${ulid()}`;
   const ambiguousRecord = record(
     projectA,
     ambiguousId,
-    'Lost response reconciliation',
-    'Simular una respuesta perdida después de que Engram ya confirmó el POST.',
-    'Confirmar el record mediante get exacto.',
+    'Lost POST response reconciliation',
+    'Simular respuesta perdida después de POST confirmado.',
+    'Confirmar mediante get exacto.',
   );
 
-  const failAfterCommit = new FailOnceAfterCommitTransport(
+  const failPost = new FailOnceAfterCommitTransport(
     new DockerEngramHttpTransport({ container }),
+    {
+      method: 'POST',
+      path: '/observations',
+    },
   );
-  const reconciliationAdapter = new EngramHttpAdapter({
+  const postReconciliationAdapter = new EngramHttpAdapter({
     projectId: projectA,
-    transport: failAfterCommit,
+    transport: failPost,
   });
+  knownAdapters.add(postReconciliationAdapter);
 
-  const reconciled = await reconciliationAdapter.put(ambiguousRecord);
-  created.push({
-    adapter: reconciliationAdapter,
-    ref: refOf(ambiguousRecord),
+  const reconciledPost = await putTracked(
+    postReconciliationAdapter,
+    ambiguousRecord,
+  );
+  assert.equal(reconciledPost.write_reconciled, true);
+  assert.deepEqual(
+    stripTimes(reconciledPost.record),
+    ambiguousRecord,
+  );
+  console.log('PASS A8 lost POST response reconciled by exact get');
+
+  const patchTarget = await adapterA.get(refOf(updated));
+  const patchLost = structuredClone(updated);
+  patchLost.payload.continuity.next =
+    'Frontier confirmada después de respuesta PATCH perdida.';
+
+  const failPatch = new FailOnceAfterCommitTransport(
+    new DockerEngramHttpTransport({ container }),
+    {
+      method: 'PATCH',
+      path: `/observations/${patchTarget.backend_ref.observation_id}`,
+    },
+  );
+  const patchReconciliationAdapter = new EngramHttpAdapter({
+    projectId: projectA,
+    transport: failPatch,
   });
-  if (reconciliationAdapter.sessionCreated) {
-    adaptersWithSessions.add(reconciliationAdapter);
-  }
+  knownAdapters.add(patchReconciliationAdapter);
 
-  assert.equal(reconciled.write_reconciled, true);
-  assert.deepEqual(stripTimes(reconciled.record), ambiguousRecord);
-  console.log('PASS A8 lost write response reconciled by exact get');
+  const reconciledPatch = await patchReconciliationAdapter.put(
+    patchLost,
+  );
+  assert.equal(reconciledPatch.write_reconciled, true);
+  assert.deepEqual(stripTimes(reconciledPatch.record), patchLost);
+  console.log('PASS A8.1 lost PATCH response reconciled by exact get');
 
   const missingAdapter = new EngramHttpAdapter({
     projectId: projectA,
@@ -201,38 +279,44 @@ async function main() {
 
   const caps = adapterA.capabilities();
   assert.equal(caps.conditional_put, false);
-  assert.equal(caps.max_complete_list_items, 19);
+  assert.equal(caps.max_project_scan_items, 20);
   console.log('PASS capability declaration matches first-Alpha contract');
 
-  console.log('');
-  console.log('RESULT: PASS');
-  console.log(JSON.stringify({
+  return {
     capabilities: caps,
     evidence: {
+      health: true,
+      protected_cleanup_preflight: true,
+      empty_collection_normalization: true,
       put_get: true,
+      private_tag_boundary: true,
       sequential_update: true,
       fresh_instance_recovery: true,
       exact_identity: true,
-      bounded_list: listed.complete,
+      bounded_list_complete: listedSmall.complete,
+      bounded_list_overflow_detected: !listedBounded.complete,
       project_isolation: true,
-      ambiguous_write_recovery: true,
+      ambiguous_post_recovery: true,
+      ambiguous_patch_recovery: true,
       unavailable_normalization: true,
     },
-  }, null, 2));
+  };
 }
 
-async function cleanup() {
+async function cleanupStrict() {
   if (keepData) {
     console.log('');
     console.log('SDD_SPIKE_KEEP_DATA=1 -> preserving spike records.');
-    return;
+    return { skipped: true };
   }
 
   console.log('');
   console.log('Cleaning spike data...');
 
+  const failures = [];
   const unique = new Map();
-  for (const entry of created) {
+
+  for (const entry of cleanupEntries) {
     unique.set(
       `${entry.ref.project_id}/${entry.ref.kind}/${entry.ref.id}`,
       entry,
@@ -243,21 +327,36 @@ async function cleanup() {
     try {
       await adapter.deleteRecord(ref);
     } catch (error) {
-      console.warn(
-        `WARN cleanup observation ${ref.project_id}/${ref.id}: ${formatError(error)}`,
+      failures.push(
+        `observation ${ref.project_id}/${ref.id}: ${formatError(error)}`,
       );
     }
   }
 
-  for (const adapter of adaptersWithSessions) {
+  for (const adapter of knownAdapters) {
+    if (!adapter.sessionCreated) {
+      continue;
+    }
+
     try {
       await adapter.cleanupSession();
     } catch (error) {
-      console.warn(
-        `WARN cleanup session ${adapter.sessionId}: ${formatError(error)}`,
+      failures.push(
+        `session ${adapter.sessionId}: ${formatError(error)}`,
       );
     }
   }
+
+  if (failures.length > 0) {
+    throw new AdapterError(
+      'backend_error',
+      `Cleanup failed for ${failures.length} resource(s)`,
+      { failures },
+    );
+  }
+
+  console.log('PASS cleanup: hard-deleted observations and removed sessions');
+  return { skipped: false };
 }
 
 function stripTimes(value) {
@@ -272,6 +371,19 @@ function formatError(error) {
     return `${error.code}: ${error.message}`;
   }
   return error?.stack || String(error);
+}
+
+function printFailure(error) {
+  console.error('');
+  console.error('RESULT: FAIL');
+  console.error(formatError(error));
+
+  if (
+    error instanceof AdapterError
+    && Object.keys(error.details).length > 0
+  ) {
+    console.error(JSON.stringify(error.details, null, 2));
+  }
 }
 
 function ulid(now = Date.now()) {
@@ -299,19 +411,36 @@ function ulid(now = Date.now()) {
   return `${timePart}${randomPart}`;
 }
 
-let exitCode = 0;
+let scenarioResult = null;
+let failure = null;
 
 try {
-  await main();
+  scenarioResult = await runScenario();
 } catch (error) {
-  exitCode = 1;
-  console.error('');
-  console.error('RESULT: FAIL');
-  console.error(formatError(error));
-  if (error instanceof AdapterError && Object.keys(error.details).length > 0) {
-    console.error(JSON.stringify(error.details, null, 2));
+  failure = error;
+}
+
+try {
+  await cleanupStrict();
+} catch (error) {
+  if (!failure) {
+    failure = error;
+  } else {
+    failure.details = {
+      ...(failure.details || {}),
+      cleanup_failure: formatError(error),
+      cleanup_details:
+        error instanceof AdapterError ? error.details : undefined,
+    };
   }
-} finally {
-  await cleanup();
-  process.exitCode = exitCode;
+}
+
+if (failure) {
+  printFailure(failure);
+  process.exitCode = 1;
+} else {
+  console.log('');
+  console.log('RESULT: PASS');
+  console.log(JSON.stringify(scenarioResult, null, 2));
+  process.exitCode = 0;
 }

@@ -1,18 +1,25 @@
 import { spawn } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 const MARKER = 'sddrec2';
 const HTTP_SENTINEL = '__SDD_HTTP_STATUS__:';
 const DEFAULT_CONTAINER = process.env.ENGRAM_CONTAINER || 'sdd-engram';
 const DEFAULT_TIMEOUT_MS = 10_000;
-const MAX_COMPLETE_LIST = 19;
-const SEARCH_SENTINEL_LIMIT = 20;
+
+// Exact get only needs two rows to distinguish 0 / 1 / ambiguous.
+const EXACT_SEARCH_LIMIT = 2;
+
+// list() scans a bounded canonical SDD project bucket using GET /observations,
+// not FTS. 20 is deliberately small for the first-Alpha proof and is surfaced
+// as a capability rather than hidden.
+const MAX_PROJECT_SCAN_ITEMS = 20;
+const PROJECT_SCAN_SENTINEL = MAX_PROJECT_SCAN_ITEMS + 1;
 
 const TYPE_BY_KIND = Object.freeze({
-  change: 'architecture',
-  decision: 'decision',
-  evidence: 'manual',
-  knowledge: 'pattern',
+  change: 'sdd_change',
+  decision: 'sdd_decision',
+  evidence: 'sdd_evidence',
+  knowledge: 'sdd_knowledge',
 });
 
 export class AdapterError extends Error {
@@ -28,9 +35,11 @@ export class DockerEngramHttpTransport {
   constructor({
     container = DEFAULT_CONTAINER,
     timeoutMs = DEFAULT_TIMEOUT_MS,
+    httpToken = process.env.ENGRAM_HTTP_TOKEN || '',
   } = {}) {
     this.container = container;
     this.timeoutMs = timeoutMs;
+    this.httpToken = httpToken;
   }
 
   async request(method, path, body = undefined) {
@@ -52,6 +61,13 @@ export class DockerEngramHttpTransport {
       '-w',
       `\n${HTTP_SENTINEL}%{http_code}`,
     ];
+
+    if (this.httpToken) {
+      args.push(
+        '-H',
+        `Authorization: Bearer ${this.httpToken}`,
+      );
+    }
 
     if (body !== undefined) {
       args.push(
@@ -124,6 +140,18 @@ export class DockerEngramHttpTransport {
       throw new AdapterError(
         'unsupported',
         `Engram HTTP authorization blocks ${method} ${path}`,
+        {
+          status,
+          body: parsed,
+          hint: 'If ENGRAM_HTTP_TOKEN is configured in the Engram container, set the same ENGRAM_HTTP_TOKEN for this Node process.',
+        },
+      );
+    }
+
+    if (status === 409) {
+      throw new AdapterError(
+        'backend_error',
+        `Engram HTTP 409 conflict for ${method} ${path}`,
         { status, body: parsed },
       );
     }
@@ -160,7 +188,7 @@ export class EngramHttpAdapter {
       project_isolation: true,
       search: true,
       conditional_put: false,
-      max_complete_list_items: MAX_COMPLETE_LIST,
+      max_project_scan_items: MAX_PROJECT_SCAN_ITEMS,
       transport: 'engram-http-via-docker-exec',
     };
   }
@@ -173,6 +201,27 @@ export class EngramHttpAdapter {
       });
     }
     return body;
+  }
+
+  // Verify protected DELETE access before the spike creates any data.
+  // Observation id 0 cannot be a normal SQLite AUTOINCREMENT observation.
+  async probeCleanupAccess() {
+    try {
+      await this.transport.request(
+        'DELETE',
+        '/observations/0?hard=true',
+      );
+    } catch (error) {
+      if (isAdapterError(error, 'not_found')) {
+        return true;
+      }
+      throw error;
+    }
+
+    throw new AdapterError(
+      'backend_error',
+      'Unexpected success deleting observation #0 during cleanup preflight',
+    );
   }
 
   async put(record) {
@@ -204,15 +253,8 @@ export class EngramHttpAdapter {
         );
       }
     } catch (error) {
-      // A transport failure can happen after Engram committed the write.
-      // Reconcile by exact logical identity before declaring failure.
-      if (
-        !isAdapterError(error, 'unavailable')
-        && !isAdapterError(error, 'backend_error')
-      ) {
-        throw error;
-      }
-
+      // The response can be lost after Engram committed POST/PATCH.
+      // Reconcile only through the exact logical identity.
       try {
         const reconciled = await this.get(refOf(record));
         if (deepEqual(canonicalCore(reconciled.record), desiredCore)) {
@@ -222,13 +264,16 @@ export class EngramHttpAdapter {
           };
         }
       } catch {
-        // Preserve the original write uncertainty below.
+        // Preserve write uncertainty below.
       }
 
       throw new AdapterError(
         'ambiguous',
         `Write outcome is ambiguous for ${record.kind}/${record.id}`,
-        { cause: error.message, code: error.code },
+        {
+          cause: error?.message || String(error),
+          code: error?.code,
+        },
       );
     }
 
@@ -254,11 +299,13 @@ export class EngramHttpAdapter {
     validateRef(ref, this.projectId);
 
     const topicKey = physicalTopic(ref.kind, ref.id);
+    const project = physicalProject(ref.project_id);
     const params = new URLSearchParams({
       q: topicKey,
-      project: ref.project_id,
+      type: physicalType(ref.kind),
+      project,
       scope: 'project',
-      limit: String(SEARCH_SENTINEL_LIMIT),
+      limit: String(EXACT_SEARCH_LIMIT),
       match_mode: 'all',
     });
 
@@ -267,16 +314,15 @@ export class EngramHttpAdapter {
       `/search?${params.toString()}`,
     );
 
-    const observations = normalizeSearchResults(body);
+    const observations = normalizeObservationArray(body);
 
     const exactByBackend = dedupeByObservationId(
-      observations.filter((observation) => {
-        return (
-          observation?.topic_key === topicKey
-          && observation?.project === ref.project_id
-          && observation?.scope === 'project'
-        );
-      }),
+      observations.filter((observation) => (
+        observation?.topic_key === topicKey
+        && observation?.project === project
+        && observation?.scope === 'project'
+        && observation?.type === physicalType(ref.kind)
+      )),
     );
 
     const decoded = [];
@@ -316,7 +362,7 @@ export class EngramHttpAdapter {
   async list({
     project_id,
     kind,
-    limit = MAX_COMPLETE_LIST,
+    limit = MAX_PROJECT_SCAN_ITEMS,
   }) {
     if (project_id !== this.projectId) {
       throw new AdapterError(
@@ -326,35 +372,41 @@ export class EngramHttpAdapter {
     }
     requireKind(kind);
 
-    if (!Number.isInteger(limit) || limit < 1 || limit > MAX_COMPLETE_LIST) {
+    if (
+      !Number.isInteger(limit)
+      || limit < 1
+      || limit > MAX_PROJECT_SCAN_ITEMS
+    ) {
       throw new AdapterError(
         'unsupported',
-        `list limit must be between 1 and ${MAX_COMPLETE_LIST}`,
+        `list limit must be between 1 and ${MAX_PROJECT_SCAN_ITEMS}`,
       );
     }
 
-    const queryLimit = Math.min(limit + 1, SEARCH_SENTINEL_LIMIT);
+    const project = physicalProject(project_id);
     const params = new URLSearchParams({
-      q: `${MARKER} ${kind}`,
-      type: physicalType(kind),
-      project: project_id,
+      project,
       scope: 'project',
-      limit: String(queryLimit),
-      match_mode: 'all',
+      limit: String(PROJECT_SCAN_SENTINEL),
+      sort: 'created_at:desc',
     });
 
     const { body } = await this.transport.request(
       'GET',
-      `/search?${params.toString()}`,
+      `/observations?${params.toString()}`,
     );
 
-    const observations = normalizeSearchResults(body);
+    const observations = normalizeObservationArray(body);
+    const scanComplete = observations.length < PROJECT_SCAN_SENTINEL;
 
     const decoded = [];
     for (const observation of dedupeByObservationId(observations)) {
       if (
-        observation?.project !== project_id
+        observation?.project !== project
         || observation?.scope !== 'project'
+        || observation?.type !== physicalType(kind)
+        || typeof observation?.topic_key !== 'string'
+        || !observation.topic_key.startsWith(`sdd/v2/${kind}/`)
       ) {
         continue;
       }
@@ -368,36 +420,85 @@ export class EngramHttpAdapter {
       }
     }
 
-    // If Engram filled the sentinel query window, we cannot prove that no more
-    // matching records exist because this endpoint has no cursor/total.
-    const complete = observations.length < queryLimit;
-
     return {
       items: decoded.slice(0, limit),
-      complete: complete && decoded.length <= limit,
+      complete: scanComplete && decoded.length <= limit,
       next_cursor: null,
-      adapter_bound: MAX_COMPLETE_LIST,
-      candidate_count: observations.length,
+      project_scan_complete: scanComplete,
+      project_scan_count: observations.length,
+      adapter_bound: MAX_PROJECT_SCAN_ITEMS,
     };
   }
 
   async deleteRecord(ref) {
-    const found = await this.get(ref);
-    await this.transport.request(
+    let found;
+    try {
+      found = await this.get(ref);
+    } catch (error) {
+      if (isAdapterError(error, 'not_found')) {
+        return { already_absent: true };
+      }
+      throw error;
+    }
+
+    const { body } = await this.transport.request(
       'DELETE',
-      `/observations/${found.backend_ref.observation_id}`,
+      `/observations/${found.backend_ref.observation_id}?hard=true`,
+    );
+
+    if (
+      body?.status !== 'deleted'
+      || body?.hard_delete !== true
+      || body?.id !== found.backend_ref.observation_id
+    ) {
+      throw new AdapterError(
+        'backend_error',
+        `Engram did not confirm a hard delete for observation #${found.backend_ref.observation_id}`,
+        { body },
+      );
+    }
+
+    try {
+      await this.get(ref);
+    } catch (error) {
+      if (isAdapterError(error, 'not_found')) {
+        return {
+          observation_id: found.backend_ref.observation_id,
+          hard_deleted: true,
+        };
+      }
+      throw error;
+    }
+
+    throw new AdapterError(
+      'backend_error',
+      `Observation #${found.backend_ref.observation_id} is still recoverable after hard delete`,
     );
   }
 
   async cleanupSession() {
     if (!this.sessionCreated) {
-      return;
+      return { skipped: true };
     }
-    await this.transport.request(
+
+    const { body } = await this.transport.request(
       'DELETE',
       `/sessions/${encodeURIComponent(this.sessionId)}`,
     );
+
+    if (
+      body?.status !== 'deleted'
+      || body?.id !== this.sessionId
+    ) {
+      throw new AdapterError(
+        'backend_error',
+        `Engram did not confirm deletion of session ${this.sessionId}`,
+        { body },
+      );
+    }
+
     this.sessionCreated = false;
+    return { deleted: true };
   }
 
   async ensureSession() {
@@ -405,11 +506,24 @@ export class EngramHttpAdapter {
       return;
     }
 
-    await this.transport.request('POST', '/sessions', {
+    const physical = physicalProject(this.projectId);
+    const { body } = await this.transport.request('POST', '/sessions', {
       id: this.sessionId,
-      project: this.projectId,
+      project: physical,
       directory: this.directory,
     });
+
+    if (
+      body?.status !== 'created'
+      || body?.id !== this.sessionId
+    ) {
+      throw new AdapterError(
+        'backend_error',
+        `Engram did not confirm creation of session ${this.sessionId}`,
+        { body },
+      );
+    }
+
     this.sessionCreated = true;
   }
 }
@@ -428,7 +542,11 @@ export class FailOnceAfterCommitTransport {
   async request(method, path, body) {
     const result = await this.inner.request(method, path, body);
 
-    if (!this.failed && method === this.method && path === this.path) {
+    if (
+      !this.failed
+      && method === this.method
+      && path === this.path
+    ) {
       this.failed = true;
       throw new AdapterError(
         'unavailable',
@@ -448,8 +566,14 @@ export function refOf(record) {
   };
 }
 
+function physicalProject(projectId) {
+  return `sddv2-${sha256(projectId).slice(0, 24)}`;
+}
+
 function physicalTopic(kind, id) {
-  return `sdd/v2/${kind}/${id.toLowerCase()}`;
+  // Hashing keeps the physical key stable while avoiding Engram's lowercasing,
+  // whitespace collapsing and 120-char truncation from changing logical IDs.
+  return `sdd/v2/${kind}/${sha256(id)}`;
 }
 
 function physicalType(kind) {
@@ -463,7 +587,7 @@ function encodeCreate(record, sessionId) {
     type: physicalType(record.kind),
     title: physicalTitle(record),
     content: serializeRecord(record),
-    project: record.project_id,
+    project: physicalProject(record.project_id),
     scope: 'project',
     topic_key: physicalTopic(record.kind, record.id),
   };
@@ -485,7 +609,7 @@ function physicalTitle(record) {
 }
 
 function serializeRecord(record) {
-  return JSON.stringify({
+  const json = JSON.stringify({
     schema_version: 1,
     marker: MARKER,
     project_id: record.project_id,
@@ -494,6 +618,11 @@ function serializeRecord(record) {
     ...(record.subject_id ? { subject_id: record.subject_id } : {}),
     payload: record.payload,
   });
+
+  // Engram deliberately rewrites literal <private>...</private> before storing.
+  // JSON \u003c escapes parse back to the same logical "<" characters but do
+  // not match Engram's raw private-tag regex during persistence.
+  return json.replaceAll('<', '\\u003c');
 }
 
 function decodeObservation(observation) {
@@ -523,7 +652,23 @@ function decodeObservation(observation) {
     );
   }
 
+  requireKind(stored.kind);
+
+  const expectedProject = physicalProject(stored.project_id);
   const expectedTopic = physicalTopic(stored.kind, stored.id);
+  const expectedType = physicalType(stored.kind);
+
+  if (observation.project !== expectedProject) {
+    throw new AdapterError(
+      'invalid',
+      `Observation #${observation.id} physical project does not match its SDD identity`,
+      {
+        expectedProject,
+        actualProject: observation.project,
+      },
+    );
+  }
+
   if (observation.topic_key !== expectedTopic) {
     throw new AdapterError(
       'invalid',
@@ -535,13 +680,13 @@ function decodeObservation(observation) {
     );
   }
 
-  if (observation.project !== stored.project_id) {
+  if (observation.type !== expectedType) {
     throw new AdapterError(
       'invalid',
-      `Observation #${observation.id} project does not match its SDD payload`,
+      `Observation #${observation.id} type does not match its SDD kind`,
       {
-        observationProject: observation.project,
-        recordProject: stored.project_id,
+        expectedType,
+        actualType: observation.type,
       },
     );
   }
@@ -628,10 +773,8 @@ function requireNonEmpty(value, name) {
   }
 }
 
-function normalizeSearchResults(body) {
-  // Engram's HTTP handler serializes a nil Go slice as JSON `null` when a
-  // search has no matches. Semantically that is an empty result set, not a
-  // backend error.
+function normalizeObservationArray(body) {
+  // Engram serializes a nil Go slice as JSON null for an empty result set.
   if (body === null) {
     return [];
   }
@@ -639,7 +782,7 @@ function normalizeSearchResults(body) {
   if (!Array.isArray(body)) {
     throw new AdapterError(
       'backend_error',
-      'Engram search returned an unexpected JSON shape',
+      'Engram observation collection returned an unexpected JSON shape',
       { body },
     );
   }
@@ -668,6 +811,12 @@ function deepEqual(left, right) {
 
 function isAdapterError(error, code) {
   return error instanceof AdapterError && error.code === code;
+}
+
+function sha256(value) {
+  return createHash('sha256')
+    .update(String(value), 'utf8')
+    .digest('hex');
 }
 
 function runProcess(command, args, {

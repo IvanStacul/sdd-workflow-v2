@@ -2,13 +2,11 @@
 
 ## Pregunta
 
-> ¿Puede Engram 1.20.0, usando únicamente su superficie pública soportada, implementar el `Memory Contract` actual de SDD para `put/get/list` sin side-state autoritativo ni parsing de output humano?
+> ¿Puede Engram 1.20.0, usando únicamente su superficie pública soportada, implementar el `Memory Contract` actual de SDD para `put/get/list` sin side-state autoritativo, fork ni parsing de output humano?
 
-Este experimento **no es producto** y no se instala en repos consumidores.
+Este experimento **no es producto**.
 
 ## Frontier
-
-Archivos activos:
 
 ```text
 experiments/engram-adapter/
@@ -17,159 +15,168 @@ experiments/engram-adapter/
 └── spike.mjs
 ```
 
-No modifica:
+## Endpoints auditados contra Engram v1.20.0
+
+El spike usa solamente:
 
 ```text
-docs/*
-infra/engram/*
-runtime/*
-cli/*
-skills/*
-Engram upstream
-```
-
-## Por qué HTTP en este spike
-
-La primera integración histórica intentó MCP directo, pero `mem_get_observation` expone el cuerpo completo como texto formateado para agentes. Para este contrato necesitamos validar la representación estructurada sin depender de parsing humano.
-
-Engram 1.20.0 también expone una API HTTP JSON pública:
-
-```text
-POST  /sessions
-POST  /observations
-GET   /search
-GET   /observations/{id}
-PATCH /observations/{id}
-DELETE /observations/{id}
+GET    /health
+POST   /sessions
+GET    /search
+POST   /observations
+GET    /observations
+PATCH  /observations/{id}
+DELETE /observations/{id}?hard=true
 DELETE /sessions/{id}
 ```
 
-La imagen Docker de SDD ya contiene `curl`. Por eso el experimento ejecuta:
+### Contratos relevantes observados
+
+- `/search`
+  - requiere `q`;
+  - acepta `type`, `project`, `scope`, `limit`, `match_mode`;
+  - `MaxSearchResults` default = 20;
+  - si `q` contiene `/`, Engram intenta primero un lookup SQL exacto por `topic_key`;
+  - un resultado vacío puede serializarse como JSON `null`.
+
+- `/observations`
+  - permite enumeración reciente por `project`, `scope`, `limit`;
+  - no aplica el límite FTS de 20;
+  - el adapter lo usa para `list`, evitando depender de ranking FTS para enumeración.
+
+- writes de observations
+  - Engram normaliza `project`;
+  - normaliza y limita `topic_key`;
+  - reemplaza `<private>...</private>`;
+  - trunca content que excede su máximo;
+  - `topic_key` existente actúa como upsert;
+  - PATCH devuelve la observation actualizada.
+
+- DELETE
+  - los DELETE están protegidos cuando `ENGRAM_HTTP_TOKEN` está configurado;
+  - observation delete es soft por defecto;
+  - `hard=true` elimina la row física;
+  - una session no puede eliminarse mientras conserve observations, incluso soft-deleted.
+
+Por eso el spike verifica acceso al cleanup **antes** de crear datos y solo declara `RESULT: PASS` después de que el cleanup también pase.
+
+## Mapping físico del adapter
+
+SDD conserva sus IDs lógicos sin adoptar la normalización de Engram.
+
+### Physical project
 
 ```text
-host Node
-  -> docker exec
-  -> curl 127.0.0.1:7437 dentro de sdd-engram
-  -> Engram HTTP JSON
+sddv2-<sha256(project_id)[0:24]>
 ```
 
-No se publica el puerto `7437` al host y no se modifica Engram.
-
-Este spike prueba **fit semántico del backend**, no decide todavía el transporte final del producto. Después podrá compararse el costo de:
-
-- HTTP vía Docker;
-- una superficie MCP estructurada ya soportada;
-- otro mecanismo público.
-
-## Mapping experimental
-
-Record SDD:
-
-```yaml
-project_id: my-project
-kind: change
-id: CHG-<ULID>
-payload: {...}
-```
-
-se representa como observation Engram:
+Evita que:
 
 ```text
-scope:     project
-topic_key: sdd/v2/<kind>/<id-lowercase>
-title:     sddrec2 <kind> <id> :: <human title>
-content:   JSON normalizado SDD
-type:      mapping físico por kind
+MyProject
+myproject
+my--project
 ```
 
-`topic_key`, observation ID y type Engram son detalles del adapter.
+se conviertan accidentalmente en la misma identidad lógica por las reglas físicas de Engram.
 
-## Semántica probada
+### Physical topic
+
+```text
+sdd/v2/<kind>/<sha256(record.id)>
+```
+
+Evita que lowercase, whitespace collapsing o el límite de 120 chars de Engram alteren IDs SDD.
+
+### Type
+
+```text
+change    -> sdd_change
+decision  -> sdd_decision
+evidence  -> sdd_evidence
+knowledge -> sdd_knowledge
+```
+
+No reutiliza categorías semánticas generales de Engram (`architecture`, `decision`, etc.).
+
+### Content
+
+El JSON lógico se guarda directamente, pero `<` se serializa como escape JSON `\u003c` para que Engram no modifique inadvertidamente datos canónicos mediante su filtro `<private>`.
+
+Al hacer `JSON.parse`, el record lógico original se reconstruye sin cambios.
+
+## Semántica
 
 ### put
 
 ```text
 get exact
   -> existe: PATCH observation por backend id
-  -> no existe: POST observation con topic_key estable
-  -> get exact de confirmación
+  -> no existe: crear session + POST observation
+-> get exact de confirmación
 ```
 
-No hay CAS ni allocator.
+Respuesta perdida después de POST o PATCH:
+
+```text
+get exact
+-> mismo contenido lógico: reconciled success
+-> distinto/no recuperable: ambiguous
+```
 
 ### get
 
 ```text
-derivar topic_key exacto
--> GET /search?q=<topic_key>&project=<project>
--> filtrar equality exacta de topic_key/project
--> validar JSON SDD: marker + project_id + kind + id
+topic físico determinista
+-> GET /search con project/type/scope exactos y limit=2
+-> adapter filtra equality exacta
 ```
 
-El endpoint físico se llama `search`, pero el adapter no acepta ranking como autoridad.
-
-Resultado lógico:
+0 / 1 / >1 matches se traducen a:
 
 ```text
-0 matches exactos -> not_found
-1 match exacto    -> record
->1 exactos        -> ambiguous
+not_found / record / ambiguous
 ```
+
+Ranking nunca selecciona el record canónico.
 
 ### list
 
-Engram 1.20.0 limita `mem_search` a 20 por MCP; este spike usa HTTP search y conserva deliberadamente un bound de prueba de 19 para no fingir exhaustividad.
+```text
+GET /observations
+  project=<physical SDD project>
+  scope=project
+  limit=21
+```
 
-Consulta un marker reservado:
+El proyecto físico está reservado al adapter SDD.
+
+Bound inicial:
 
 ```text
-sddrec2 + kind
+20 observations SDD por logical project
 ```
 
-y retorna:
-
-```yaml
-items: [...]
-complete: true|false
-```
-
-Si el backend devuelve el sentinel completo de 20 candidatos:
+Con 21 candidatas:
 
 ```text
-complete = false
+complete=false
 ```
 
-No se crea índice local para compensarlo.
+No se presenta un conjunto truncado como completo.
 
 ## Modelo de concurrencia
 
-Este spike corresponde a la primera Alpha:
-
 ```text
 SOPORTADO
-- varios Changes independientes
+- Changes independientes
 - handoff secuencial del mismo Change
 
 NO SOPORTADO
-- dos writers concurrentes sobre el mismo Change
+- same-Change concurrent writers
 ```
 
-Por eso no prueba CAS/create-if-absent.
-
-## Escenarios
-
-`spike.mjs` prueba contra Engram real:
-
-1. health del container;
-2. `put -> get` de Change;
-3. update secuencial de frontier;
-4. recovery con una instancia nueva del adapter;
-5. dos IDs visualmente similares no se confunden;
-6. `list` de varios Changes y flag de completitud;
-7. aislamiento entre dos proyectos con el mismo Change ID;
-8. pérdida simulada de respuesta **después** de un POST ya confirmado por Engram y reconciliación vía `get`;
-9. backend/container inexistente -> `unavailable`;
-10. cleanup best-effort de observations/sessions creadas por el experimento.
+No hay CAS/create-if-absent.
 
 ## Ejecutar
 
@@ -178,55 +185,57 @@ Prerequisitos:
 ```text
 Node >= 20
 Docker
-container sdd-engram ejecutando Engram 1.20.0
+container sdd-engram con Engram 1.20.0
 ```
 
-Desde la raíz del repo:
+Desde la raíz:
 
 ```bash
 node experiments/engram-adapter/spike.mjs
 ```
 
-Para conservar los records de diagnóstico:
+Si Engram fue configurado con `ENGRAM_HTTP_TOKEN`, el mismo token debe estar disponible para el proceso Node.
+
+PowerShell:
+
+```powershell
+$env:ENGRAM_HTTP_TOKEN="..."
+node experiments/engram-adapter/spike.mjs
+```
+
+Conservar datos deliberadamente:
 
 ```bash
 SDD_SPIKE_KEEP_DATA=1 node experiments/engram-adapter/spike.mjs
 ```
 
-Para otro nombre de container:
+## PASS
 
-```bash
-ENGRAM_CONTAINER=my-engram node experiments/engram-adapter/spike.mjs
-```
-
-## Criterio de decisión
-
-### PASS
-
-Solo si todos los escenarios pasan contra el backend real sin:
+El resultado solo es PASS si pasan:
 
 ```text
-state.json
-mapping local persistente
-SQLite privado
-fork Engram
-parsing de output humano
-elección por ranking del LLM
-```
-
-### FAIL
-
-Si alguno de estos falla:
-
-```text
-exact get verificable
-update secuencial
+health
+cleanup-auth preflight
+empty collection normalization
+put/get
+private-tag boundary
+sequential PATCH
+fresh-process-style recovery
+exact identity
+bounded list complete
+bounded list overflow -> complete=false
 project isolation
-bounded list con honestidad de completitud
-recovery sin estado local
-write reconciliation
+lost POST response recovery
+lost PATCH response recovery
+backend unavailable
+strict hard-delete cleanup
+session cleanup
 ```
 
-El resultado se lleva a `docs/memory-contract.md` o `docs/change-model.md` y el experimento se elimina cuando deje de aportar evidencia.
+Si el cleanup falla:
 
-No se "arregla" el fallo agregando infraestructura paralela dentro de este mismo spike.
+```text
+RESULT: FAIL
+```
+
+No se permiten warnings post-PASS.
