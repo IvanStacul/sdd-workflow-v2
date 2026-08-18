@@ -1,15 +1,15 @@
 # SDD V2 — Memory Contract
 
-## 1. Status y propósito
+## 1. Estado y propósito
 
-**Estado:** contrato de arquitectura para la reconstrucción de SDD V2.
+**Estado:** contrato activo de persistencia para la reconstrucción de SDD V2.
 
-Este documento reemplaza la frontera de memoria introducida por `0.2.0-alpha.1`, donde `.sdd/state.json` pasó a poseer parte del lifecycle/identity del Change mientras Engram conservaba contexto durable relacionado.
+Este documento define la frontera mínima entre el modelo de dominio SDD y cualquier backend durable.
 
-La arquitectura aprobada en `rebaseline-architecture.md` elimina esa doble autoridad:
+Arquitectura:
 
 ```text
-SDD logical model
+SDD Domain Model
       |
       v
 Memory Contract
@@ -21,650 +21,747 @@ Backend Adapter
       +--> otro backend
 ```
 
-El Memory Contract es la **única frontera de persistencia durable de records SDD**. No es el modelo de Change, no es una API de Engram y no es un file store.
+El Memory Contract:
 
-Esta frontier define:
+- no es el Change Model;
+- no es una API de Engram;
+- no es un file store;
+- no define routing, skills ni runtime;
+- no intenta convertir SDD en una base transaccional distribuida.
 
-- qué garantías mínimas necesita SDD de cualquier backend canónico;
-- qué operaciones son obligatorias y cuáles opcionales;
-- cómo se preserva identidad lógica;
-- cómo se evita lost update y colisión entre actores;
-- cómo se recupera estado conocido sin fuzzy search;
-- cómo falla el sistema cuando la persistencia no puede garantizarse;
-- qué debe demostrar un adapter antes de ser aceptado.
+Su responsabilidad es más pequeña:
 
-No define todavía el payload final de `Change`; eso se cierra en la siguiente frontier (`docs/change-model.md`).
+> guardar y recuperar records SDD con identidad estable, aislamiento de proyecto, confirmación durable y semántica verificable.
+
+La primera implementación debe funcionar sobre una dependencia externa mediante superficies públicas/soportadas. Engram es el primer candidato; SDD no modifica Engram ni mantiene un fork para satisfacer este contrato.
 
 ---
 
-## 2. Objetivo del contrato
+## 2. Qué problema debe resolver
 
-SDD necesita persistencia durable para mantener intención, continuidad y evidencia entre sesiones/agentes sin convertir el backend en parte del dominio.
+SDD necesita memoria durable cuando una conversación o proceso ya no es suficiente para preservar:
 
-El contrato debe permitir que la capa SDD diga:
+- intención material;
+- scope/restricciones relevantes;
+- próxima frontier;
+- decisiones que deban sobrevivir;
+- evidence necesario para cierre;
+- knowledge reusable.
+
+El contrato debe permitir que SDD diga:
 
 ```text
-crear este record canónico
-obtener este record exacto
-actualizar esta revisión sin pisar cambios ajenos
-anexar este hecho durable una sola vez
-listar records estructuralmente
-buscar contexto desconocido cuando realmente haga falta
+guardar este record
+recuperar exactamente este record conocido
+actualizar este record
+enumerar records cuando realmente haga falta
+buscar contexto desconocido de forma aproximada
 ```
 
-sin que el executor tenga que decidir:
+sin que el agente tenga que decidir por request:
 
-- cómo serializarlo para Engram;
-- qué `topic_key` usar;
-- qué texto insertar para poder encontrarlo luego;
-- cómo interpretar output del backend;
-- cómo detectar conflictos concurrentes;
-- cómo resolver retries;
-- qué API física del backend corresponde a cada operación.
+- cómo serializar para Engram;
+- qué `topic_key` físico usar;
+- qué prefijos/títulos/markers escribir;
+- cómo validar resultados del backend;
+- cómo interpretar errores del transporte;
+- qué dato pertenece al dominio y cuál al backend.
 
-La semántica pertenece a SDD. La traducción física pertenece al adapter.
+La semántica pertenece a SDD.
+
+La traducción pertenece al adapter.
 
 ---
 
-## 3. Principios no negociables
+## 3. Principios
 
 ### M1 — Una sola autoridad durable
 
-Un record SDD durable tiene una única representación canónica lógica detrás del Memory Contract.
+Un record SDD durable tiene una única autoridad.
 
 No existe:
 
 ```text
-local state canonical
-      +
-Engram record canonical
+state.json canonical
++
+Engram canonical
 ```
 
-Puede existir cache, índice o projection técnica, pero debe ser:
+Puede existir cache o índice técnico solo si es:
 
-- no autoritativa;
-- completamente reconstruible;
-- descartable sin pérdida semántica;
-- invisible para el modelo SDD.
+- derivable;
+- descartable;
+- no autoritativo;
+- innecesario para reconstruir la verdad después de perderlo.
 
-### M2 — Exact before approximate
+### M2 — Exactitud es una propiedad semántica, no el nombre de una API
 
-Cuando existe `id` o `key` conocida, la recuperación debe ser exacta.
+Para una identidad conocida, SDD necesita una recuperación **verificablemente exacta**.
+
+Eso no significa que el backend deba tener una función literalmente llamada `getByKey`.
+
+Un adapter puede usar internamente una API llamada `search` si puede demostrar:
+
+1. que consulta una representación determinista de la identidad;
+2. que valida project/kind/id exactos;
+3. que no elige por ranking o similitud;
+4. que detecta cero, uno o múltiples matches de forma explícita.
+
+Por tanto:
 
 ```text
-known identity -> get/query exact
-unknown context -> search
+backend API name != SDD semantic contract
 ```
 
-`search()` nunca es requisito para resolver el lifecycle/frontier de un Change conocido.
+Lo prohibido es:
 
-### M3 — La concurrencia forma parte de correctness
+```text
+buscar texto parecido
+-> elegir el resultado que "parece" correcto
+-> tratarlo como estado canónico
+```
 
-Un backend canónico debe impedir que dos actores crean que actualizaron correctamente el mismo estado cuando uno pisó al otro.
+### M3 — Persisted significa confirmado
 
-Por lo tanto, los writes canónicos requieren precondiciones observables: creación solo-si-ausente y actualización contra una versión conocida.
+`put()` no retorna éxito porque el agente "intentó guardar".
 
-### M4 — Persisted significa confirmado
+Éxito significa que el backend confirmó el write o que el adapter pudo reconciliar un resultado ambiguo mediante una lectura exacta posterior.
 
-Una operación no se considera durable hasta que el adapter devuelve confirmación positiva.
+Si el adapter no puede saber si el write quedó durable:
 
-Timeout, error ambiguo o conexión caída no equivalen a éxito.
+```text
+success
+```
 
-### M5 — El backend no define el dominio
+está prohibido.
 
-Engram, SQLite, una API remota u otro store pueden tener concepts propios. Ninguno de ellos redefine:
+### M4 — El backend no define el dominio
 
-- Change;
-- Decision;
-- Evidence;
-- Knowledge;
-- lifecycle;
-- relaciones SDD;
-- criterios de closure.
+Conceptos físicos como:
 
-### M6 — El contrato no es middleware del trabajo normal
+```text
+topic_key
+observation
+revision_count
+FTS
+session
+SQLite id
+MCP tool name
+```
 
-El Memory Contract se usa para estado durable SDD. No envuelve cada lectura de archivo, tool call, shell command o edición del repo.
+pueden ser usados por un adapter.
 
-### M7 — No false parity
+No forman parte del Change Model por ese motivo.
 
-Un adapter no puede declarar soporte porque puede aproximar una operación mediante fuzzy search o parsing frágil de output humano.
+### M5 — No false parity
 
-Una emulación es válida únicamente si preserva la semántica observable del contrato y pasa sus pruebas de conformidad.
+Un adapter solo declara una capability cuando puede preservar su semántica observable.
 
----
+No se acepta como equivalencia:
 
-## 4. Qué merece persistirse
+- parsing de output humano;
+- side-state autoritativo;
+- heurística del LLM;
+- acceso a tablas privadas de una dependencia externa;
+- fuzzy match presentado como exact lookup.
 
-Persistir cuando evita al menos uno de estos costos:
+### M6 — Persistencia adaptativa
 
-- pérdida de intención o scope material;
-- pérdida de continuidad entre sesiones/agentes;
-- repetición de una decisión material;
-- pérdida de evidencia relevante para closure;
-- repetición de conocimiento reusable;
-- imposibilidad de reconstruir la próxima execution frontier.
+El Memory Contract no decide si un request es:
 
-No persistir por defecto:
+```text
+ephemeral
+receipt
+continuity
+```
 
-- razonamiento interno;
-- narración del HOW;
-- planes locales desechables;
-- comandos rutinarios exitosos;
-- logs completos;
-- errores triviales resueltos;
-- WorkUnits especulativos;
-- summaries de sesión solo por ceremonia;
-- cada tool call o edición.
+Pero debe soportar correctamente aquello que el dominio decidió persistir.
 
-El Memory Contract no decide por sí mismo **cuándo** un trabajo es `ephemeral`, `receipt` o `continuity`; esa policy pertenece a SDD. Sí debe poder persistir correctamente aquello que SDD determine como durable.
+### M7 — No diseñar garantías "por las dudas"
 
----
+Una guarantee de storage entra al core solo si la necesita el modelo de ejecución declarado.
 
-## 5. Records lógicos soportados
+Especialmente:
 
-El contrato es genérico respecto del payload, pero SDD necesita inicialmente estos kinds.
+```text
+compare-and-set
+locks
+leases
+atomic create-if-absent
+distributed transactions
+```
 
-### Core
-
-#### `change`
-
-Record canónico mutable que representa el estado durable vigente de un Change.
-
-Su payload final se define en `change-model.md`.
-
-#### `decision`
-
-Record durable para una decisión material cuando necesita identidad/historia propia.
-
-No toda decisión local produce un record.
-
-#### `evidence`
-
-Evidencia durable con identidad propia cuando debe ser referenciada, auditada o preservada independientemente del snapshot del Change.
-
-Un Change puede conservar un resumen de evidence y referencias sin copiar logs completos.
-
-#### `knowledge`
-
-Conocimiento reusable del proyecto que merece sobrevivir al Change que lo originó.
-
-### Experimental
-
-#### `workunit`
-
-Permitido por el contrato solo si una WorkUnit fue realmente materializada por SDD. No se exige para la primera implementación del núcleo.
-
-### Fuera del core actual
-
-`event` y `session_summary` **no son kinds obligatorios** en esta reconstrucción.
-
-Pueden reintroducirse después si evidencia real demuestra una necesidad que `change + decision + evidence + knowledge` no cubre bien.
-
-En particular, `session_summary` no sustituye continuidad canónica del Change.
+no son requisitos universales mientras SDD no soporte un escenario que los necesite.
 
 ---
 
-## 6. Envelope lógico normalizado
+## 4. Modelo de concurrencia de la primera Alpha
 
-El backend puede almacenar otra forma física. El adapter debe exponer a SDD una forma normalizada equivalente a:
+La primera Alpha debe declarar un modelo pequeño y comprobable.
+
+### Soportado
+
+```text
+- múltiples Changes independientes abiertos en un mismo proyecto;
+- múltiples worktrees/agentes trabajando en Changes distintos;
+- handoff secuencial de un mismo Change entre sesiones/agentes;
+- restart/new process entre un write y una recuperación posterior.
+```
+
+### No soportado inicialmente
+
+```text
+dos writers concurrentes mutando el mismo Change
+```
+
+Si dos agentes necesitan trabajar simultáneamente sobre la misma intención, SDD debe:
+
+- separar unidades independientes cuando corresponda; o
+- serializar/hacer handoff;
+- o declarar explícitamente que ese caso todavía no tiene garantía.
+
+No debe fingir multi-writer safety mediante last-write-wins.
+
+### Consecuencia
+
+La primera Alpha **no exige CAS** como primitive del Memory Contract.
+
+Si dogfood o coordinación real demuestra necesidad de concurrent writers sobre el mismo Change, se evalúa una capability adicional:
+
+```text
+conditional_put(expected_version)
+```
+
+y un backend que no pueda ofrecerla deja de soportar ese modo.
+
+La arquitectura no se deforma preventivamente.
+
+---
+
+## 5. Identidad lógica
+
+Todo record SDD durable posee identidad propia del dominio.
+
+Forma conceptual:
 
 ```yaml
 record:
   schema_version: 1
-  id: stable-sdd-record-id
   project_id: stable-project-id
-  kind: change | decision | evidence | knowledge | workunit
-  key: optional-stable-canonical-key
-  subject: optional-parent-record-id-or-key
+  kind: change | decision | evidence | knowledge
+  id: stable-sdd-record-id
+  subject_id: optional-related-record-id
   payload: typed-sdd-data
-  version: opaque-concurrency-token
   created_at: timestamp
   updated_at: timestamp
 ```
 
+### `project_id`
+
+Aísla records entre proyectos.
+
+La misma identidad de record no debe resolverse accidentalmente desde otro proyecto.
+
+### `kind`
+
+Describe la entidad SDD.
+
+Inicialmente:
+
+```text
+change
+decision
+evidence
+knowledge
+```
+
+No se incluye `workunit` hasta que vuelva a demostrarse necesario.
+
 ### `id`
 
-Identidad estable asignada por SDD para ese record lógico.
+Es estable y pertenece a SDD.
 
-No debe depender de un identificador físico del backend.
+El backend puede tener otro ID físico.
 
-### `key`
-
-Identidad lógica exacta para records canónicos actualizables.
-
-Ejemplos conceptuales:
+El adapter debe derivar de forma determinista la identidad física necesaria para guardar/recuperar:
 
 ```text
-change/CHG-20260818-01
-knowledge/windows-posix-shell
+(project_id, kind, id)
 ```
 
-El formato concreto se define en la capa de dominio/adaptador; el executor no lo inventa ad hoc.
+sin un mapping local autoritativo.
 
-Dentro de un proyecto y kind, una key canónica es única.
+### `subject_id`
 
-### `subject`
-
-Permite asociar un record a otro record SDD sin exigir relaciones nativas del backend.
-
-Ejemplo: Evidence cuyo subject es un Change.
-
-### `version`
-
-Token opaco devuelto por el store para optimistic concurrency.
-
-SDD no asume que sea un entero. Puede mapearse a revision, ETag, version id u otro mecanismo equivalente.
-
-### `payload`
-
-Datos tipados pertenecientes al modelo SDD.
-
-El Memory Contract no define aquí todos sus campos. El adapter no puede reinterpretar su significado.
-
----
-
-## 7. Identidad y namespaces
-
-Todo acceso durable está partitionado por `project_id`.
-
-Dos proyectos pueden tener la misma key sin colisionar.
-
-Para un project:
-
-```text
-(project_id, kind, key) -> como máximo un record canónico vigente
-(project_id, id)        -> un único record lógico
-```
-
-Una implementación que no pueda garantizar esta unicidad no puede ser backend canónico de SDD.
-
-### Consecuencia para Change IDs
-
-La generación de `CHG-YYYYMMDD-NN` no es una primitive del Memory Store.
-
-La capa SDD puede calcular un candidato, pero la unicidad final se garantiza con **create-if-absent atómico**.
-
-Ejemplo conceptual:
-
-```text
-actor A -> intenta crear CHG-...-05 -> success
-actor B -> intenta crear CHG-...-05 -> conflict
-actor B -> recalcula/reintenta      -> CHG-...-06
-```
-
-Así, la identidad no depende de un allocator file-based ni de que un único proceso posea el workspace.
-
----
-
-## 8. Primitivas del contrato
-
-El contrato conserva una superficie pequeña: cinco primitivas.
-
-La diferencia respecto de versiones anteriores es que ahora sus **semánticas de identidad, concurrencia e idempotencia son obligatorias**.
-
-### 8.1 `put(record, precondition)`
-
-Crea o reemplaza el estado canónico de un record.
-
-`put` debe soportar dos precondiciones para records canónicos:
-
-#### `absent`
-
-Crear solo si no existe la misma identidad canónica.
-
-Resultado:
-
-```text
-created | conflict
-```
-
-La comprobación y el write deben ser atómicos desde la perspectiva observable del contrato.
-
-Uso:
-
-- crear Change;
-- crear knowledge canónico nuevo;
-- reservar una identidad sin lock local.
-
-#### `version = <token>`
-
-Actualizar solo si la versión actual coincide con la versión leída por el caller.
-
-Resultado:
-
-```text
-updated(new_version) | conflict
-```
-
-Uso:
-
-- actualizar frontier;
-- cambiar lifecycle;
-- modificar scope/acceptance;
-- cerrar Change.
-
-#### Blind overwrite
-
-Un write canónico sin precondición **no está permitido en el hot path SDD**.
-
-Esto evita last-write-wins silencioso.
-
-### 8.2 `append(record)`
-
-Crea un record histórico/no-canónico sin reemplazar otro.
-
-El `record.id` se genera antes del write y debe hacer el retry idempotente:
-
-```text
-append(id=X)
-network ambiguity
-append(id=X) again
-```
-
-no puede crear dos records lógicos distintos.
-
-Si `id=X` ya existe con contenido incompatible, el adapter devuelve `conflict`.
-
-Uso típico:
-
-- Decision con historia propia;
-- Evidence independiente;
-- otros hechos durables que más adelante demuestren valor.
-
-### 8.3 `get(ref)`
-
-Recupera un record exacto por:
-
-```text
-id
-```
-
-o por identidad canónica:
-
-```text
-(project_id, kind, key)
-```
-
-Resultado:
-
-```text
-record | not_found
-```
-
-No puede resolverse mediante ranking semántico.
-
-Cuando SDD conoce `CHG-...`, este es el camino normal de recuperación.
-
-### 8.4 `query(selector, page)`
-
-Recuperación estructural y paginada.
-
-Selectors mínimos obligatorios:
-
-```text
-project_id        required
-kind              optional exact
-subject           optional exact
-id                optional exact
-key               optional exact
-created range     optional
-updated range     optional
-```
-
-El adapter puede internamente escanear/filtrar si el backend no ofrece todos esos índices, siempre que el resultado sea:
-
-- determinista;
-- completo para el selector declarado;
-- paginado/bounded;
-- no basado en ranking fuzzy.
-
-SDD puede aplicar filtros de dominio sobre `payload` después de recuperar records estructuralmente. Por ejemplo, `listOpenChanges()` puede consultar `kind=change` y filtrar lifecycle según el Change Model.
-
-Si este costo resulta inaceptable en un backend real, se resuelve en el adapter/capabilities o se descarta ese backend; no se deforma el modelo SDD para acomodarlo.
-
-### 8.5 `search(text, filters)`
-
-Búsqueda textual/semántica aproximada para contexto cuyo identificador se desconoce.
-
-Es **capacidad opcional para correctness del core**.
-
-Puede utilizarse para:
-
-- descubrir Knowledge relevante;
-- encontrar decisiones históricas sin referencia conocida;
-- explorar contexto previo cuando no existe identidad suficiente.
-
-No puede utilizarse como única implementación de `get()` o `query()`.
-
----
-
-## 9. Operaciones que NO pertenecen al Memory Contract
-
-Estas son operaciones de dominio/servicio SDD, no primitivas del store:
-
-```text
-openChange()
-updateChange()
-closeChange()
-listOpenChanges()
-allocateChangeId()
-getExecutionFrontier()
-relateChanges()
-promoteKnowledge()
-verifyAcceptance()
-getProjectContext()
-getRoadmap()
-getTimeline()
-exportMarkdown()
-```
+Asociación opcional.
 
 Ejemplo:
 
 ```text
-closeChange()
-  -> get(change)
-  -> comprobar precondiciones SDD
-  -> append evidence si necesita record independiente
-  -> put(change closed, expected_version)
+Evidence -> Change
+Decision -> Change
 ```
 
-El backend no necesita saber qué significa `completed`.
+No se exige que el backend tenga relaciones nativas.
+
+### `payload`
+
+Datos del dominio.
+
+El adapter serializa/deserializa, pero no cambia su significado.
 
 ---
 
-## 10. Concurrencia y lost-update prevention
+## 6. Identidad y creación de records
 
-La robustez multi-agent/multi-worktree no se resuelve con un lock del workspace local.
+El Memory Contract **no asigna Change IDs**.
 
-El contrato exige optimistic concurrency en la autoridad durable.
+Eso pertenece al Domain Model/Semantic API.
 
-### Caso: dos actores editan el mismo Change
+La primera Alpha tampoco debe depender de un contador central o allocator file-based.
 
-```text
-A get -> version V4
-B get -> version V4
+La identidad del dominio deberá ser suficientemente collision-resistant para el modelo de ejecución soportado.
 
-A put expected V4 -> success, V5
-B put expected V4 -> conflict
-```
+Consecuencia para la siguiente frontier:
 
-B debe:
+> `change-model.md` debe revisar `CHG-YYYYMMDD-NN` si ese formato exige una reserva atómica que el dominio no necesita realmente.
 
-1. volver a leer;
-2. reevaluar el cambio de estado;
-3. reintentar solo si sigue siendo válido.
-
-Nunca se permite:
-
-```text
-B pisa V5 con su copia de V4
-```
-
-### Caso: dos actores crean la misma identidad
-
-`put(..., absent)` debe permitir un solo success.
-
-Esta propiedad será obligatoria en el adapter con el que se vuelva a dogfood.
+El Memory Contract no se sobrediseña para preservar un formato de ID.
 
 ---
 
-## 11. Consistencia mínima requerida
+## 7. Superficie mínima
 
-El contrato no exige distributed transactions ni linearizability global de todos los queries.
+La superficie core se reduce a tres operaciones y una capability opcional.
 
-Sí exige las siguientes propiedades observables:
+```text
+put(record)
+get(ref)
+list(selector)
+search(text, filters)   optional
+```
 
-### Write acknowledgement
+No existe una primitive `append` separada en la primera Alpha.
 
-Cuando `put/append` retorna success, el record debe haber cruzado la frontera de durability que el backend declara.
-
-### Exact read after acknowledged write
-
-Después de un write confirmado, `get` por esa identidad debe retornar esa revisión o una posterior.
-
-### No phantom success
-
-Si el adapter no sabe si el write ocurrió, debe devolver un resultado ambiguo/error, nunca `success` inventado.
-
-### Deterministic canonical lookup
-
-`get` de una identidad conocida no puede depender del orden de resultados de search.
-
-### Project isolation
-
-Una consulta de un proyecto no puede devolver records de otro como si fueran propios.
+Un record histórico se guarda con su propio `id` estable mediante `put()` y la Semantic API controla su mutabilidad.
 
 ---
 
-## 12. Idempotencia y retries
+## 8. `put(record)`
 
-Los adapters deben asumir que pueden existir retries por timeout, process restart o transporte.
+Crea o actualiza un record identificado por:
 
-### Canonical `put`
+```text
+project_id + kind + id
+```
 
-Un retry con la misma precondición después de success puede recibir conflict porque la versión cambió. La Semantic API debe resolverlo mediante `get` y comparación de resultado, no mediante overwrite ciego.
+Semántica:
 
-### `append`
+```text
+put(record)
+-> stored(record/ref)
+-> unavailable
+-> invalid
+-> ambiguous
+-> backend_error
+```
 
-Debe ser idempotente por `record.id`.
+### 8.1 Upsert deliberado
 
-### Read operations
+Para el modelo inicial, `put` tiene semántica de upsert.
 
-`get/query/search` no tienen side effects SDD.
+Esto encaja naturalmente con:
 
-El executor no necesita implementar esta política manualmente; pertenece a Semantic API + adapter.
+- Change vigente;
+- Knowledge vigente;
+- retry del mismo record histórico con el mismo ID.
+
+No exige `create-if-absent` atómico.
+
+### 8.2 Creación lógica
+
+Antes de crear un record nuevo, la Semantic API puede hacer:
+
+```text
+get(id)
+-> not_found
+-> put(record)
+```
+
+Eso **no pretende ser una reserva atómica**.
+
+Es correcto dentro del modelo declarado porque concurrent creation de la misma identidad lógica no es un escenario soportado.
+
+La identidad debe reducir suficientemente la posibilidad de colisión accidental.
+
+### 8.3 Update
+
+Para modificar un Change:
+
+```text
+get(change)
+-> aplicar operación de dominio
+-> put(updated change)
+-> confirmación
+```
+
+El adapter puede devolver metadata física adicional, como una revisión, pero el core no depende de ella todavía.
+
+### 8.4 Records conceptualmente inmutables
+
+Decision/Evidence pueden ser tratados como inmutables por la Semantic API.
+
+Regla:
+
+```text
+mismo id + mismo contenido
+-> retry idempotente aceptable
+
+mismo id + contenido materialmente distinto
+-> invalid/conflict lógico
+```
+
+La protección primaria pertenece a la Semantic API.
+
+No exige una primitive distinta al backend durante la primera Alpha.
+
+### 8.5 Confirmación
+
+El adapter considera un `put` confirmado cuando la superficie pública del backend devuelve éxito suficiente según su contrato.
+
+Si se pierde la respuesta después del envío, el adapter intenta:
+
+```text
+get(exact identity)
+```
+
+y compara la representación normalizada.
+
+Resultados:
+
+```text
+record coincide    -> stored
+record no existe   -> unavailable/ambiguous según causa
+record difiere     -> ambiguous/conflict
+```
+
+No se usa un file auxiliar para recordar writes inciertos.
 
 ---
 
-## 13. Mutabilidad e historia
+## 9. `get(ref)`
 
-No se adopta event sourcing completo.
+Recupera **un record lógico exacto**.
 
-Regla base:
+Referencia mínima:
 
-```text
-estado vigente canónico -> put con version precondition
-hecho durable independiente -> append
+```yaml
+project_id: my-project
+kind: change
+id: CHG-...
 ```
 
-### Mutable/canónico
+Resultado:
 
-- Change;
-- Knowledge canónico cuando evoluciona;
-- WorkUnit materializado si finalmente se valida.
+```text
+record
+not_found
+ambiguous
+unavailable
+backend_error
+```
 
-### Histórico/independiente
+### 9.1 Garantía requerida
 
-- Decision cuando necesita historia propia;
-- Evidence cuando necesita identidad propia.
+`get()` debe validar exactamente:
 
-La capa de dominio decide cuándo embebir un resumen/reference dentro del Change y cuándo crear record separado.
+```text
+project_id
+kind
+id
+```
+
+La implementación física puede requerir:
+
+```text
+derivar key física
+-> invocar API pública del backend
+-> validar resultado(s)
+-> obtener body completo si hace falta
+```
+
+### 9.2 Un backend puede usar search internamente
+
+Esto es válido:
+
+```text
+SDD get(change-id)
+   ↓
+adapter deriva exact backend key
+   ↓
+backend search/query
+   ↓
+adapter exige equality exacta
+   ↓
+0 = not_found
+1 = record
+>1 = ambiguous
+```
+
+Siempre que la prueba del adapter demuestre que ranking textual no puede cambiar cuál record se considera autoridad.
+
+### 9.3 Lo que no es válido
+
+```text
+search("SDD Change ticket")
+-> primer resultado
+-> asumir que es el Change
+```
+
+Tampoco:
+
+```text
+search amplio
+-> LLM decide cuál "parece" exacto
+```
 
 ---
 
-## 14. Continuidad y recovery
+## 10. `list(selector)`
 
-El Memory Contract conserva continuidad; no reconstruye un plan completo.
+Permite enumerar un conjunto conocido de records SDD.
 
-### Known Change
-
-```text
-Change ID conocida
-  -> get exact
-  -> leer intent/frontier/constraints/evidence relevante
-  -> inspección dirigida del repo
-  -> ACT
-```
-
-No:
+Uso inicial:
 
 ```text
-search "SDD Change"
-  -> ranking
-  -> adivinar cuál era
-  -> reconstruir conversación
+list Changes de un project
+-> Domain Model filtra lifecycle=open
 ```
 
-### Change desconocido / “continuar lo pendiente”
+Selector core:
+
+```yaml
+project_id: required
+kind: optional
+limit: bounded
+cursor: optional
+```
+
+No exigimos selectors arbitrarios por payload en el Memory Contract.
+
+### 10.1 Correctness de enumeración
+
+Un `list` debe indicar si su resultado es completo para la ventana solicitada.
+
+Forma conceptual:
+
+```yaml
+items: [...]
+complete: true | false
+next_cursor: optional
+```
+
+Si un backend solo puede devolver los primeros N matches y no puede demostrar que son todos:
 
 ```text
-query(project, kind=change)
-  -> SDD filtra Changes abiertos
-  -> si queda uno relevante, get/context dirigido
-  -> si hay varios, resolver por señales explícitas/repo/user
+complete = false
 ```
 
-`search` puede enriquecer después, pero no sustituye el listado estructural.
+SDD no puede presentar ese resultado como "todos los Changes abiertos".
 
-### Stop retrieval
+### 10.2 Por qué `list` sigue siendo core
 
-Cuando intención, restricciones y próxima frontier ya son suficientes para actuar de forma segura, SDD detiene recuperación adicional.
+El dogfood validó recovery cuando el Change conocido estaba disponible, pero un proyecto real puede tener varios Changes abiertos.
 
-La existencia del backend no justifica cargar timeline, summaries o history “por si acaso”.
+No queremos reintroducir un índice local solo para enumerarlos.
+
+Por eso la capacidad de enumeración debe probarse en el adapter.
+
+### 10.3 Bounded no significa ilimitado
+
+La primera Alpha puede declarar límites explícitos.
+
+Ejemplo conceptual:
+
+```text
+hasta N records por project/kind
+```
+
+Si se supera la capacidad declarada, el adapter falla de forma visible o exige paginación.
+
+No recorta silenciosamente.
 
 ---
 
-## 15. Evidence y cierre sin transacción multi-record obligatoria
+## 11. `search(text, filters)` — capability opcional
 
-El Memory Contract no exige una transacción distribuida entre Change y Evidence.
+Búsqueda aproximada para contexto cuya identidad no se conoce.
 
-SDD puede preservar correctness mediante orden de writes.
+Sirve para:
 
-Ejemplo cuando Evidence necesita record propio:
+- Knowledge relevante;
+- Decisions históricas sin referencia;
+- exploración de contexto;
+- recuerdos semánticos adicionales.
+
+No es necesaria para:
 
 ```text
-1. append(evidence) -> confirmed ref/id
-2. put(change closed + evidence ref, expected_version)
+get(record conocido)
 ```
 
-Si 1 falla:
+pero puede ser una primitive física usada por el adapter para implementar `get` **si el resultado exacto es verificable**, como se definió antes.
 
-- el Change no se cierra.
+Esta distinción es importante:
 
-Si 1 funciona y 2 falla/conflicta:
+```text
+SDD search semantics     = approximate discovery
+backend search endpoint  = transport/query mechanism
+```
 
-- el Change permanece abierto;
-- puede quedar Evidence no referenciada todavía;
-- SDD re-lee y decide si reintenta.
-
-Es preferible un Evidence huérfano recuperable a un Change marcado completed sin evidencia durable.
-
-El nivel de evidencia requerido pertenece al Change/Verification contract, no al store.
+No son lo mismo.
 
 ---
 
-## 16. Failure model normalizado
+## 12. Por qué desaparece `append`
 
-Los adapters deben traducir errores físicos a un conjunto pequeño de resultados semánticos.
+La versión anterior tenía:
+
+```text
+put
+append
+get
+query
+search
+```
+
+Para la primera Alpha, `append` no aporta una garantía independiente.
+
+Un hecho histórico puede recibir identidad antes de persistirse:
+
+```text
+Evidence EVD-X
+Decision DEC-Y
+```
+
+y guardarse:
+
+```text
+put(EVD-X)
+put(DEC-Y)
+```
+
+La Semantic API decide que no se muten posteriormente.
+
+Ventajas:
+
+- menor superficie;
+- retry por misma identidad;
+- menos diferencias artificiales entre backends;
+- no obliga a Engram a simular un primitive que SDD todavía no necesita.
+
+Si más adelante existe un caso real de stream/event append con requisitos propios, se agrega por evidencia.
+
+---
+
+## 13. Por qué desaparece CAS del core
+
+CAS resolvía correctamente un problema:
+
+```text
+dos writers simultáneos sobre el mismo Change
+```
+
+Pero esa capacidad se convirtió en requisito antes de decidir si la primera Alpha debía soportar ese escenario.
+
+Eso produjo una inversión incorrecta:
+
+```text
+solución técnica candidata
+-> requisito del contrato
+-> backend no cumple
+-> intentar cambiar backend
+```
+
+La secuencia correcta es:
+
+```text
+modelo de ejecución
+-> riesgo que realmente existe
+-> guarantee necesaria
+-> capability del backend
+```
+
+Para la Alpha actual:
+
+```text
+same-Change concurrent writers = unsupported
+```
+
+Por tanto:
+
+```text
+CAS = capability futura, no requisito base
+```
+
+No se pierde correctness; se reduce el dominio soportado y se declara explícitamente.
+
+---
+
+## 14. Consistencia mínima requerida
+
+El backend/adapter debe demostrar:
+
+### 14.1 Durable acknowledgement
+
+Después de `put -> stored`, un proceso nuevo puede recuperar el record.
+
+### 14.2 Exact-verifiable read
+
+Una identidad conocida produce:
+
+```text
+0 match
+1 exact match
+ambiguous
+```
+
+No una elección por similitud.
+
+### 14.3 Read-after-write suficiente
+
+Después de un write confirmado, `get` devuelve esa revisión lógica o una posterior.
+
+### 14.4 Project isolation
+
+Un record de A no se devuelve como record de B.
+
+### 14.5 No phantom success
+
+Un error de transporte no se convierte en success inventado.
+
+### 14.6 No hidden authority
+
+Perder cualquier cache local no elimina la posibilidad de recuperar records canónicos.
+
+### 14.7 Declared completeness
+
+`list()` no presenta un conjunto truncado como completo.
+
+Eso es suficiente para el modelo inicial.
+
+---
+
+## 15. Failure model
+
+Resultados normalizados:
 
 ```text
 not_found
-conflict
+ambiguous
 unavailable
 unsupported
 invalid
-ambiguous_write
 backend_error
 ```
 
@@ -672,354 +769,477 @@ backend_error
 
 La identidad exacta no existe.
 
-### `conflict`
+### `ambiguous`
 
-Falló una precondición de unicidad/versionado.
-
-Es un resultado esperado de concurrencia, no un crash.
+El adapter no puede establecer una única representación canónica o resolver con seguridad un write incierto.
 
 ### `unavailable`
 
-El backend/transporte no está disponible.
+Backend/transporte no disponible.
 
 ### `unsupported`
 
-El backend no puede implementar una capacidad solicitada con las garantías del contrato.
+La operación/capability requerida no puede preservarse con el backend actual.
 
 ### `invalid`
 
-Record/selector no cumple el contrato.
-
-### `ambiguous_write`
-
-El adapter perdió confirmación después de enviar un write y no puede determinar si se aplicó.
-
-La Semantic API debe resolver mediante exact read/idempotency antes de reintentar destructivamente.
+Violación del contrato lógico o de una regla de la Semantic API.
 
 ### `backend_error`
 
-Fallo interno no clasificado.
+Fallo físico no clasificado.
+
+`conflict` no es error core del Memory Contract mientras no exista conditional write.
+
+Puede aparecer posteriormente como parte de una capability de concurrencia.
 
 ---
 
-## 17. Comportamiento ante fallo según durability
+## 16. Fallo de memoria según durability
 
-### Trabajo `ephemeral`
+### Ephemeral
 
-Si nunca requirió record SDD durable, una caída del backend no bloquea la edición/verify normal del repo.
+No depende de Memory Contract.
 
-No se crea artificialmente un Change para registrar el fallo de memoria.
+Una caída de Engram no bloquea el cambio si realmente era ephemeral.
 
-### `receipt`
+### Receipt
 
-Si el trabajo requiere receipt durable, no se puede afirmar que el receipt existe hasta confirmar persistencia.
+La implementación del repo puede haber terminado, pero SDD no afirma que exista receipt durable hasta confirmar el `put`.
 
-El código puede estar correctamente implementado, pero SDD debe distinguir:
+Debe distinguir:
 
 ```text
-implementation completed
-persistence/closure pending
+implementation complete
+receipt persistence failed/pending
 ```
 
-si la memoria no está disponible.
+### Continuity
 
-### `continuity`
+Antes del handoff, el Change actualizado debe estar confirmado.
 
-Antes de terminar/handoff, el contexto mínimo de continuidad debe estar confirmado durablemente.
+Si no:
 
-Si no puede persistirse, SDD reporta el bloqueo. No finge que una próxima sesión podrá recuperarlo.
+```text
+continuity not durable
+```
+
+y SDD debe informarlo.
+
+No se usa chat history como sustituto silencioso.
 
 ---
 
-## 18. Capabilities de backend
+## 17. Records y mutabilidad
 
-Un adapter publica capabilities reales.
+El contrato no adopta event sourcing.
 
-### Required para backend canónico
+### Mutable
 
-```yaml
-canonical_put:
-  create_if_absent: true
-  compare_and_set: true
-exact_get: true
-structured_query: true
-append_idempotent: true
-durable_ack: true
+Inicialmente:
+
+```text
+Change
+Knowledge canónico
 ```
 
-Sin estas capacidades —nativas o emuladas con equivalencia demostrada— el backend **no puede ser autoridad canónica de SDD**.
+### Normalmente inmutables por dominio
+
+```text
+Decision
+Evidence
+```
+
+El Memory Contract no necesita saber esas reglas.
+
+La Semantic API las aplica antes de `put`.
+
+Esto mantiene el store genérico.
+
+---
+
+## 18. Evidence y closure
+
+Para la primera Alpha, closure no requiere transacciones multi-record.
+
+El Change puede contener evidence suficiente embebido cuando eso sea proporcional.
+
+Ejemplo:
+
+```text
+get Change
+-> verificar acceptance
+-> incorporar outcome/evidence summary
+-> put Change closed
+```
+
+Si una Evidence merece record independiente:
+
+```text
+put Evidence
+-> confirmar
+-> actualizar Change con ref
+-> put Change
+```
+
+Si el segundo write falla, el Change permanece abierto y la Evidence puede quedar sin referencia temporal.
+
+Eso es recuperable y preferible a afirmar completion sin evidence.
+
+---
+
+## 19. Recovery
+
+### 19.1 Change conocido
+
+```text
+known Change id
+-> get exact
+-> intent/frontier/constraints
+-> inspección dirigida del repo
+-> ACT
+```
+
+Este fast-path conserva la evidencia útil del dogfood Alpha.4/5.
+
+### 19.2 "Continuar lo pendiente"
+
+```text
+list(project, kind=change)
+-> Domain Model identifica Changes abiertos
+-> resolver el relevante
+-> get exact
+-> ACT
+```
+
+Si `list` retorna `complete=false`, SDD no puede afirmar que enumeró todo.
+
+Debe:
+
+- continuar paginación;
+- usar una estrategia explícita soportada;
+- o declarar `unsupported`.
+
+No inventa exhaustividad.
+
+### 19.3 Stop retrieval
+
+Cuando intent + constraints + frontier permiten actuar con seguridad:
+
+```text
+STOP RETRIEVAL
+-> inspección dirigida
+-> ACT
+```
+
+El backend no justifica cargar historia adicional.
+
+---
+
+## 20. Backend capabilities
+
+Un adapter declara capacidades reales.
+
+### Required para la primera Alpha
+
+```yaml
+put: true
+exact_get: true
+bounded_list: true
+durable_ack: true
+project_isolation: true
+```
 
 ### Optional
 
 ```yaml
 search: true|false
-bulk_export: true|false
+conditional_put: true|false
 native_relations: true|false
-native_transactions: true|false
+bulk_export: true|false
+transactions: true|false
 ```
 
-SDD core no depende de las opcionales para correctness.
+### `conditional_put`
 
-### Emulación válida
+Si un backend ofrece CAS/version preconditions, el adapter puede exponerlo.
 
-Un adapter puede construir una capacidad requerida encima de primitivas más bajas del backend si:
+SDD no lo usa como core hasta habilitar same-Change concurrent writers.
 
-- sigue habiendo una sola autoridad;
-- no usa fuzzy search como sustituto de exact lookup;
-- resiste process restart;
-- mantiene unicidad/concurrency semantics;
-- pasa el contract test suite.
-
-Un índice técnico local puede existir solo si es cache reconstruible. No puede ser necesario para recuperar la verdad después de perderlo.
+Esto permite evolución sin convertir capacidad futura en requisito presente.
 
 ---
 
-## 19. Engram: posición arquitectónica
+## 21. Engram: criterio de integración
 
-Engram continúa como **primer backend candidato**, no como decisión incuestionable.
+Engram es una dependencia externa y el primer backend candidato.
 
-La evidencia histórica ya mostró que:
+La evidencia existente ya soporta:
 
-- persiste datos entre sesiones;
-- funciona en Docker;
-- puede ser consumido por agentes;
-- permitió recovery cross-session.
+- persistencia cross-session;
+- restart/down-up;
+- uso mediante MCP;
+- recuperación real en dogfood.
 
-Eso valida su utilidad como sistema de memoria, pero no demuestra todavía que pueda satisfacer este contrato como autoridad canónica.
+Eso no autoriza asumir que cualquier operación del Memory Contract está resuelta.
 
-En esta reconstrucción no se incorporan al Memory Contract conceptos específicos como:
+El próximo adapter spike debe usar exclusivamente:
+
+```text
+Engram public/supported MCP/API/CLI surface
+```
+
+preferentemente MCP para el hot path previsto.
+
+No:
+
+```text
+fork Engram
+modificar código Go
+leer SQLite privado
+crear state.json paralelo
+parsear output humano como contrato
+```
+
+### Mapping físico
+
+El adapter podrá usar internamente mecanismos como:
 
 ```text
 topic_key
-observation type
-mem_search
-mem_timeline
-session id
-revision_count
+observation id
+type
+project
+search
+get observation
 ```
 
-El Engram Adapter puede utilizarlos internamente si sirven para implementar la semántica requerida.
+siempre que exponga las semánticas de este contrato.
 
-### Regla de aceptación
-
-Si Engram no puede implementar una primitive requerida de forma exacta y robusta, hay tres opciones, en este orden:
-
-1. construir una traducción determinista dentro del adapter;
-2. reducir/corregir el contrato **solo si la necesidad SDD estaba sobrediseñada**;
-3. usar otro backend canónico.
-
-No se vuelve a introducir un file store autoritativo para compensar silenciosamente una carencia de Engram.
+Esos detalles no entran al Domain Model.
 
 ---
 
-## 20. Search y memoria semántica adicional
+## 22. Adapter spike: preguntas falsables
 
-Es posible que un backend como Engram siga siendo muy útil para memoria semántica incluso si no termina siendo el store canónico.
+La próxima implementación no debe intentar "completar SDD".
 
-La arquitectura permite separar:
+Debe responder únicamente:
+
+### A1 — put/get round-trip
 
 ```text
-canonical SDD records -> backend que cumple contrato
-semantic/context search -> provider opcional
+put Change
+-> get exact por identidad SDD
+-> mismo record normalizado
 ```
 
-Pero no se agregará esa doble infraestructura preventivamente.
+### A2 — update secuencial
 
-Primero se probará si un mismo Engram Adapter puede cumplir ambos roles sin degradar correctness.
+```text
+get Change
+-> modificar frontier
+-> put
+-> process nuevo
+-> get
+-> frontier nueva
+```
+
+### A3 — exactness
+
+Crear records parecidos y demostrar que `get(X)`:
+
+```text
+nunca devuelve Y
+```
+
+aunque el backend use una primitive llamada search.
+
+### A4 — ambiguity
+
+Si el mapping físico produce más de una coincidencia exacta:
+
+```text
+ambiguous
+```
+
+no "latest wins" silencioso.
+
+### A5 — multiple Changes
+
+Crear varios Changes y demostrar:
+
+```text
+list(project, change)
+```
+
+completo dentro del bound declarado.
+
+Si Engram no puede demostrarlo con su superficie pública:
+
+```text
+adapter FAIL para bounded_list
+```
+
+No se crea índice local.
+
+### A6 — project isolation
+
+Misma identidad en dos proyectos:
+
+```text
+get(project A) != project B
+```
+
+### A7 — restart/new process
+
+Sin estado local:
+
+```text
+put
+-> restart/new process
+-> get
+```
+
+### A8 — ambiguous write
+
+Simular/reproducir cuando sea viable una pérdida de confirmación y demostrar que exact read puede reconciliar el estado o que el adapter devuelve `ambiguous`.
+
+### A9 — unavailable
+
+Backend caído:
+
+```text
+unavailable
+```
+
+sin fallback autoritativo.
+
+### A10 — search independence
+
+Deshabilitar/ignorar semantic discovery no rompe `put/get/list`.
+
+Si `get` usa físicamente el endpoint search, la prueba debe distinguir ese mecanismo de la semántica aproximada.
 
 ---
 
-## 21. Export y proyecciones
+## 23. Lo que el spike NO debe probar todavía
 
-Export no pertenece al core del Memory Contract.
-
-```text
-query/get normalized records
-          |
-          v
-      projector
-      /   |    \
- Markdown JSON Roadmap/Timeline
-```
-
-Markdown nunca vuelve a ser source of truth por el hecho de poder exportarse.
-
-Projectors se diseñan después, cuando exista necesidad concreta de audit/handoff/reporting.
-
----
-
-## 22. Contract test suite obligatoria
-
-Un adapter no se considera implementado porque compile o porque una demo guarde un record.
-
-Debe ejecutar la misma suite de conformidad que un backend de referencia.
-
-### C1 — create + exact get
-
-Crear Change canónico con `absent` y recuperarlo exactamente por key.
-
-### C2 — uniqueness
-
-Crear dos veces la misma key con `absent`:
+Fuera de la siguiente frontier:
 
 ```text
-1 success
-1 conflict
-```
-
-Nunca dos successes lógicos.
-
-### C3 — optimistic concurrency
-
-Dos readers obtienen la misma version. Solo una actualización contra esa version puede ganar.
-
-### C4 — no lost update
-
-El segundo actor no puede sobrescribir silenciosamente el cambio del primero.
-
-### C5 — append idempotency
-
-Reintentar `append` con el mismo `record.id` no duplica el record.
-
-### C6 — exact query
-
-`query(project, kind)` devuelve el conjunto correcto sin depender de FTS/ranking.
-
-### C7 — project isolation
-
-Records de proyecto A no aparecen como pertenecientes a B.
-
-### C8 — restart durability
-
-Tras reiniciar proceso/backend, `get` recupera los writes confirmados.
-
-### C9 — new process recovery
-
-Una nueva sesión/proceso sin estado local accidental recupera el Change exacto desde la autoridad durable.
-
-### C10 — missing local cache
-
-Eliminar cualquier cache/index reconstruible no destruye la capacidad de recuperar la verdad canónica.
-
-### C11 — ambiguous write recovery
-
-Simular pérdida de respuesta después de un write y demostrar resolución segura mediante id/idempotency/exact read.
-
-### C12 — backend unavailable
-
-El adapter devuelve `unavailable`; no inventa success ni crea fallback autoritativo silencioso.
-
-### C13 — optional search separation
-
-Desactivar `search` no rompe create/get/update/query/closure persistence del core.
-
-### C14 — reference backend parity
-
-El mismo escenario de contrato pasa contra:
-
-- un `InMemory`/reference store diseñado solo para tests;
-- el adapter candidato real.
-
-La suite compara semántica observable, no detalles internos.
-
----
-
-## 23. Adapter spike — alcance exacto de la siguiente implementación
-
-Después de aprobar `change-model.md`, el primer código nuevo de persistencia debe ser un **spike**, no una nueva Alpha.
-
-Archivos tentativos del lote:
-
-```text
-lib/memory/contract.mjs
-lib/memory/engram-adapter.mjs
-tests/memory-contract.test.mjs
-```
-
-Los nombres pueden ajustarse cuando se vea el repo, pero el alcance conceptual no debe crecer.
-
-Fuera de ese spike:
-
-```text
-cli/*
-runtime/*
-skills/*
-lib/control-state.mjs
-migration/update
+same-Change concurrent writers
+CAS
+atomic create-if-absent
+WorkUnit
+router
+skills
+CLI
+runtime kernel
+migration
 OpenCode adapter
-WorkUnit machinery
 exporters
+Engram fork
 ```
 
-### El spike debe contestar
+Si aparecen durante el spike:
 
-1. ¿Engram puede dar exact get por identidad SDD sin fuzzy search?
-2. ¿puede garantizar create-if-absent?
-3. ¿puede soportar compare-and-set/version precondition?
-4. ¿puede hacer append idempotente?
-5. ¿puede query estructurado de manera completa y bounded?
-6. ¿sobrevive restart sin side state local autoritativo?
-7. ¿qué emulación exige el adapter y cuánto cuesta?
-
-Si alguna respuesta es “no”, se registra como resultado del spike antes de modificar arquitectura/runtime.
+```text
+registrar observación
+-> no ampliar la frontier
+```
 
 ---
 
-## 24. Decisiones cerradas en esta frontier
+## 24. Qué cambia respecto del contrato anterior
 
-1. No existe `state.json` como autoridad de Change.
-2. Todo record SDD durable atraviesa Memory Contract + adapter.
-3. El agente no implementa manualmente la serialización/lookup de records canónicos.
-4. `put`, `append`, `get`, `query`, `search` siguen siendo una superficie suficiente, pero `put` ahora exige precondiciones de concurrencia.
-5. Canonical create usa `absent`; canonical update usa `version`.
-6. Blind overwrite de estado canónico queda prohibido.
-7. `append` debe ser idempotente por SDD record id.
-8. Exact lookup/query son required; semantic search es optional para correctness.
-9. Unicidad y lost-update prevention se resuelven en la autoridad durable, no con un lock/file allocator del workspace.
-10. No se requiere transacción multi-record para closure si SDD ordena Evidence antes de cerrar Change.
-11. `event` y `session_summary` salen del core actual.
-12. Engram debe demostrar conformidad; no se deforma el modelo para declararlo compatible.
-13. Ningún fallback file-based autoritativo se introduce durante esta reconstrucción.
-14. El adapter real debe pasar una contract test suite común antes de entrar al runtime.
+Se eliminan como requisitos core:
 
----
+```text
+atomic create-if-absent
+optimistic concurrency / CAS
+version token obligatorio
+append como primitive separada
+arbitrary structured query
+same-Change multi-writer guarantee
+```
 
-## 25. Preguntas deliberadamente diferidas
+Se conservan:
 
-Estas preguntas no se resuelven en Memory Contract:
+```text
+una sola autoridad
+backend independence
+project isolation
+durable acknowledgement
+exact-verifiable known-state recovery
+bounded enumeration
+explicit failure
+no hidden side state
+search semántico separado del dominio
+```
 
-- payload exacto de Change;
-- campos mínimos para receipt/continuity;
-- closure lifecycle final;
-- relaciones exactas entre Changes;
-- identidad final de Decision/Evidence;
-- si WorkUnit se estabiliza;
-- forma de la Semantic API pública;
-- CLI vs MCP vs library como surface;
-- skill set definitivo;
-- deployment global/project-local;
-- migration desde Alpha.1.
+Y se agrega una distinción importante:
 
-Resolverlas aquí mezclaría storage semantics con domain/runtime design.
+> una API física denominada `search` puede participar en un `get` exacto si el adapter demuestra equality y ausencia de ranking como fuente de autoridad.
+
+Esto evita diseñar el contrato según nombres de herramientas de Engram.
 
 ---
 
-## 26. Gate para cerrar Frontier 2
+## 25. Preguntas que pasan a Change Model
 
-Esta frontier se considera cerrada cuando podemos responder sin ambigüedad:
+Después de aprobar esta frontier, `docs/change-model.md` debe revisar:
 
-1. ¿Dónde vive la autoridad durable de un Change? — detrás del Memory Contract.
-2. ¿Cómo se recupera un Change conocido? — `get` exacto.
-3. ¿Cómo se listan records sin identidad conocida? — `query` estructurado.
-4. ¿Para qué existe `search`? — descubrimiento aproximado, no control state.
-5. ¿Cómo evitamos dos IDs iguales? — create-if-absent atómico + retry de dominio.
-6. ¿Cómo evitamos lost updates? — version precondition/optimistic concurrency.
-7. ¿Cómo se reintenta un append? — record id estable/idempotente.
-8. ¿Qué ocurre si memory falla? — error explícito; no phantom persistence.
-9. ¿Puede un adapter usar cache? — sí, solo derivable/no autoritativo.
-10. ¿Engram ya está aprobado como canonical backend? — no; debe pasar el spike y contract suite.
+1. identidad de Change sin depender de allocator atómico;
+2. si `CHG-YYYYMMDD-NN` sigue siendo apropiado;
+3. qué campos necesita realmente receipt;
+4. qué campos necesita continuity;
+5. cómo representar frontier;
+6. cuándo Evidence se embebe o separa;
+7. qué significa `closed/completed`;
+8. cómo se comporta ante un escenario concurrente no soportado.
 
-### Siguiente frontier
+No se escribe adapter antes de reconciliar esas decisiones.
+
+---
+
+## 26. Gate de Frontier 2
+
+Memory Contract queda cerrado cuando podemos responder:
+
+1. **¿Dónde vive el estado durable?**  
+   Detrás de Memory Contract + adapter; no en un file paralelo.
+
+2. **¿Qué operations son core?**  
+   `put`, `get`, `list`; `search` es capability opcional.
+
+3. **¿Cómo se recupera un Change conocido?**  
+   Por `get` semánticamente exacto y validado, aunque el backend use internamente una API denominada search.
+
+4. **¿Cómo se recuperan varios Changes?**  
+   Mediante `list` bounded que declara completitud.
+
+5. **¿Necesitamos CAS?**  
+   No para la primera Alpha porque same-Change concurrent writers no está soportado.
+
+6. **¿Necesitamos create-if-absent?**  
+   No como primitive universal; la identidad del dominio no debe requerir un allocator central.
+
+7. **¿Qué pasa si Engram no puede hacer `list` completo o `get` verificable?**  
+   El adapter no conforma; no se crea side-state ni se modifica Engram.
+
+8. **¿Qué significa persisted?**  
+   Write confirmado o reconciliado mediante exact read.
+
+9. **¿Quién decide mutabilidad?**  
+   Semantic API/Domain Model.
+
+10. **¿Cuál es la próxima frontier?**  
+    Reconciliar únicamente `docs/change-model.md`.
+
+---
+
+## 27. Próxima frontier
 
 **Único archivo activo:**
 
@@ -1027,17 +1247,17 @@ Esta frontier se considera cerrada cuando podemos responder sin ambigüedad:
 docs/change-model.md
 ```
 
-No modificar todavía:
+No crear todavía:
 
 ```text
-runtime/*
-cli/*
-lib/*
-skills/*
-adapters/*
-tests/*
+lib/
+adapters/
+runtime/
+cli/
+skills/
+tests/
 ```
 
-La siguiente pregunta es:
+La pregunta siguiente es:
 
-> ¿Cuál es el mínimo modelo de Change que necesita SDD para expresar intent, continuity y evidence correctamente sobre este Memory Contract, sin reintroducir V1 documental ni cargar campos por anticipado?
+> ¿Cuál es el Change mínimo que funciona correctamente sobre este contrato y dentro del modelo de concurrencia declarado, sin allocator central, Progress/SessionSummary/WorkUnit obligatorios ni semántica heredada de Alpha.1?
