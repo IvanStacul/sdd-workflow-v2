@@ -1,9 +1,0 @@
-{
-  "schema_version": 1,
-  "memory": {
-    "provider": "engram",
-    "transport": "docker-mcp",
-    "container": "sdd-engram"
-  },
-  "approval": "material-decisions"
-}
