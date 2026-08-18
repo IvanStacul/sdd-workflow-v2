@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { ensureControlState, openChange } from '../lib/control-state.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const cli = path.join(root, 'cli', 'sdd.mjs');
@@ -84,4 +85,31 @@ test('legacy Alpha.5 Change can be registered without changing its canonical ID'
   const next = JSON.parse(run(dir, 'change', 'open', 'next-change', '--intent', 'Next change'));
   assert.match(next.id, /^CHG-\d{8}-/);
   if (next.id.startsWith('CHG-20260817-')) assert.notEqual(next.id, legacyId);
+});
+
+test('first control bootstrap reserves legacy IDs before allocating a same-day Change', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sdd-v2-bootstrap-'));
+  const bootstrapped = ensureControlState(dir, 'control-demo', {
+    legacyIds: ['CHG-20260817-01'],
+  });
+
+  const next = openChange(bootstrapped.state, {
+    slug: 'ticket-status',
+    intent: 'Add ticket status changes',
+    now: new Date('2026-08-17T12:00:00-03:00'),
+  });
+
+  assert.equal(next.id, 'CHG-20260817-02');
+  assert.equal(bootstrapped.state.allocator.high_watermarks['20260817'], 2);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, '.sdd', 'state.json'), 'utf8')).allocator.initialized, true);
+});
+
+test('first control bootstrap fails closed without a legacy namespace seed', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sdd-v2-bootstrap-'));
+
+  assert.throws(
+    () => ensureControlState(dir, 'control-demo'),
+    /Cannot establish the Change ID namespace safely/,
+  );
+  assert.equal(fs.existsSync(path.join(dir, '.sdd', 'state.json')), false);
 });

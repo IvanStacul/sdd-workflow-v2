@@ -15,6 +15,7 @@ import {
   bindMemoryRef,
   closeChange,
   ensureControlState,
+  isAllocatorInitialized,
   listChanges,
   openChange,
   registerChange,
@@ -69,6 +70,8 @@ function initProject(target, options) {
 
   const paths = projectPaths(target);
   const existingConfig = readJsonIfExists(paths.configPath);
+  const existingManifest = readJsonIfExists(paths.manifestPath);
+  const existingState = readControlState(target);
   const projectId = existingConfig?.project_id || options.projectId || deriveProjectId(target);
   const container = existingConfig?.memory?.container || options.container || 'sdd-engram';
 
@@ -85,7 +88,9 @@ function initProject(target, options) {
     changes.push(relative(target, paths.configPath, 'preserved'));
   }
 
-  const stateResult = ensureControlState(target, projectId);
+  const stateResult = ensureProjectControlState(target, projectId, container, {
+    legacyBootstrapRequired: Boolean(existingManifest && (!existingState || Number(existingManifest.schemas?.control ?? 0) < CONTROL_SCHEMA)),
+  });
   changes.push(relative(target, paths.statePath, stateResult.created ? 'created' : 'preserved'));
 
   installManagedRuntime(paths.runtimeDir, changes, target);
@@ -136,10 +141,10 @@ function updateProject(target, options) {
   fs.mkdirSync(path.dirname(paths.codexConfigPath), { recursive: true });
 
   changes.push(relative(target, paths.configPath, 'preserved'));
-  const stateResult = ensureControlState(target, projectId);
+  const stateResult = ensureProjectControlState(target, projectId, container, { legacyBootstrapRequired: true });
   changes.push(relative(target, paths.statePath, stateResult.created ? 'created' : 'preserved'));
   if (stateResult.created && Number(manifest.schemas?.control ?? 0) === 0) {
-    warnings.push('Control state bootstrapped empty. Legacy open Changes in Engram are not guessed or renumbered; recover one by exact memory lookup, then use `sdd-v2 change register <id> ... --memory-ref <ref>`.');
+    warnings.push('Control state bootstrapped with legacy Change ID namespace high-water marks. Legacy Change records were not imported or renumbered.');
   }
 
   installManagedRuntime(paths.runtimeDir, changes, target);
@@ -212,7 +217,7 @@ function handleChange(args) {
   if (subcommand === 'open') {
     const parsed = parseChangeOpenArgs(args);
     const target = path.resolve(parsed.target ?? process.cwd());
-    const { state } = loadProjectState(target);
+    const { state } = loadAllocatorReadyProjectState(target);
     const record = openChange(state, parsed);
     writeControlState(target, state);
     console.log(JSON.stringify(record, null, 2));
@@ -222,7 +227,7 @@ function handleChange(args) {
   if (subcommand === 'register') {
     const parsed = parseChangeRegisterArgs(args);
     const target = path.resolve(parsed.target ?? process.cwd());
-    const { state } = loadProjectState(target);
+    const { state } = loadAllocatorReadyProjectState(target);
     try {
       const record = registerChange(state, parsed);
       writeControlState(target, state);
@@ -306,6 +311,50 @@ function loadProjectState(target) {
   if (!state) fail(`Missing SDD control state: ${paths.statePath}. Run sdd-v2 update first.`);
   if (state.project_id !== config.project_id) fail(`Control state project_id ${state.project_id} does not match config project_id ${config.project_id}.`);
   return { config, state };
+}
+
+function loadAllocatorReadyProjectState(target) {
+  const { config } = loadProjectState(target);
+  const container = config.memory?.container || 'sdd-engram';
+  return {
+    config,
+    state: ensureProjectControlState(target, config.project_id, container, { legacyBootstrapRequired: true }).state,
+  };
+}
+
+function ensureProjectControlState(target, projectId, container, { legacyBootstrapRequired = false } = {}) {
+  const existing = readControlState(target);
+  if (existing && isAllocatorInitialized(existing)) {
+    return ensureControlState(target, projectId);
+  }
+
+  const needsLegacyKnowledge = legacyBootstrapRequired || Boolean(existing);
+  const legacyIds = needsLegacyKnowledge ? discoverLegacyChangeIds(projectId, container) : [];
+  return ensureControlState(target, projectId, { legacyIds });
+}
+
+function discoverLegacyChangeIds(projectId, container) {
+  const limit = 1000;
+  let output;
+  try {
+    output = execFileSync('docker', [
+      'exec', '-i', '-e', `ENGRAM_PROJECT=${projectId}`,
+      container, 'engram', 'search', 'CHG-',
+      '--project', projectId, '--scope', 'project', '--limit', String(limit),
+    ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (error) {
+    throw new Error(`Cannot establish the legacy Change ID namespace: Engram is unavailable (${error.message}). No Change was created.`);
+  }
+
+  if (/^No memories found for:/m.test(output)) return [];
+  const countMatch = output.match(/^Found (\d+) memories:/m);
+  if (!countMatch) throw new Error('Cannot establish the legacy Change ID namespace: Engram returned an unrecognized search result. No Change was created.');
+  const count = Number(countMatch[1]);
+  if (count >= limit) throw new Error(`Cannot establish the legacy Change ID namespace: Engram search reached the safety limit of ${limit} results. No Change was created.`);
+
+  const ids = [...output.matchAll(/\bCHG-\d{8}-\d{2,}\b/g)].map((match) => match[0]);
+  if (count > 0 && ids.length === 0) throw new Error('Cannot establish the legacy Change ID namespace: Engram results contained no canonical Change IDs. No Change was created.');
+  return [...new Set(ids)];
 }
 
 function installManagedRuntime(runtimeDir, changes, target) {

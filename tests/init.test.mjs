@@ -81,7 +81,7 @@ test('init is idempotent and preserves user-owned content', () => {
   assert.equal((firstAgents.match(/<!-- sdd-v2:start -->/g) ?? []).length, 1);
 });
 
-test('update migrates Alpha.5 control state without rewriting config or memory schema', () => {
+test('update fails closed when Alpha.5 control state needs legacy IDs but Engram is unavailable', () => {
   const dir = tempProject();
   runInit(dir);
 
@@ -100,6 +100,7 @@ test('update migrates Alpha.5 control state without rewriting config or memory s
   const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
   config.custom_project_setting = 'keep-me';
   config.evolution = { capture_signals: true };
+  config.memory.container = 'sdd-engram-unavailable-for-test';
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
 
   const dryRun = runUpdate(dir, '--dry-run');
@@ -107,15 +108,21 @@ test('update migrates Alpha.5 control state without rewriting config or memory s
   assert.match(dryRun, /control schema: 0 -> 1 \(migration-supported\)/);
   assert.ok(!fs.existsSync(statePath));
 
-  runUpdate(dir);
-  assert.ok(fs.existsSync(statePath));
-  assert.ok(!fs.existsSync(legacyMemory));
+  assert.throws(
+    () => runUpdate(dir),
+    (error) => {
+      assert.match(String(error.stderr ?? ''), /Cannot establish the legacy Change ID namespace/);
+      return true;
+    },
+  );
+  assert.ok(!fs.existsSync(statePath));
+  assert.ok(fs.existsSync(legacyMemory));
   const updatedConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
   assert.equal(updatedConfig.custom_project_setting, 'keep-me');
   assert.deepEqual(updatedConfig.evolution, { capture_signals: true });
-  const updatedManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-  assert.equal(updatedManifest.schemas.memory, 1);
-  assert.equal(updatedManifest.schemas.control, 1);
+  const unchangedManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  assert.equal(unchangedManifest.schemas.memory, 1);
+  assert.equal(unchangedManifest.schemas.control, undefined);
 });
 
 test('update fails closed for newer unsupported memory schema', () => {
