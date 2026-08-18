@@ -267,14 +267,10 @@ export class EngramHttpAdapter {
       `/search?${params.toString()}`,
     );
 
-    if (!Array.isArray(body)) {
-      throw new AdapterError('backend_error', 'Engram search did not return an array', {
-        body,
-      });
-    }
+    const observations = normalizeSearchResults(body);
 
     const exactByBackend = dedupeByObservationId(
-      body.filter((observation) => {
+      observations.filter((observation) => {
         return (
           observation?.topic_key === topicKey
           && observation?.project === ref.project_id
@@ -352,14 +348,10 @@ export class EngramHttpAdapter {
       `/search?${params.toString()}`,
     );
 
-    if (!Array.isArray(body)) {
-      throw new AdapterError('backend_error', 'Engram search did not return an array', {
-        body,
-      });
-    }
+    const observations = normalizeSearchResults(body);
 
     const decoded = [];
-    for (const observation of dedupeByObservationId(body)) {
+    for (const observation of dedupeByObservationId(observations)) {
       if (
         observation?.project !== project_id
         || observation?.scope !== 'project'
@@ -378,14 +370,14 @@ export class EngramHttpAdapter {
 
     // If Engram filled the sentinel query window, we cannot prove that no more
     // matching records exist because this endpoint has no cursor/total.
-    const complete = body.length < queryLimit;
+    const complete = observations.length < queryLimit;
 
     return {
       items: decoded.slice(0, limit),
       complete: complete && decoded.length <= limit,
       next_cursor: null,
       adapter_bound: MAX_COMPLETE_LIST,
-      candidate_count: body.length,
+      candidate_count: observations.length,
     };
   }
 
@@ -634,6 +626,25 @@ function requireNonEmpty(value, name) {
   if (typeof value !== 'string' || value.trim() === '') {
     throw new AdapterError('invalid', `${name} must be a non-empty string`);
   }
+}
+
+function normalizeSearchResults(body) {
+  // Engram's HTTP handler serializes a nil Go slice as JSON `null` when a
+  // search has no matches. Semantically that is an empty result set, not a
+  // backend error.
+  if (body === null) {
+    return [];
+  }
+
+  if (!Array.isArray(body)) {
+    throw new AdapterError(
+      'backend_error',
+      'Engram search returned an unexpected JSON shape',
+      { body },
+    );
+  }
+
+  return body;
 }
 
 function dedupeByObservationId(items) {
