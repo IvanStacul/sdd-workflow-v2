@@ -7,7 +7,8 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "test:engram": "node --test tests/engram-integration/engram.integration.mjs"
   },
   "exports": {
     ".": "./src/index.mjs"

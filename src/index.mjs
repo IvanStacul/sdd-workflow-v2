@@ -9,3 +9,13 @@ export {
 export {
   MemoryPortError,
 } from './ports/memory.mjs';
+
+export {
+  createEngramRepository,
+} from './adapters/engram/repository.mjs';
+
+export {
+  createDockerExecEngramTransport,
+  EngramHttpError,
+  EngramTransportError,
+} from './adapters/engram/transport.mjs';
