@@ -1,131 +1,266 @@
-# SDD Workflow V2 — Reconstruction
+# SDD Workflow V2 — Product Reconstruction
 
-SDD V2 está en **reconstrucción arquitectónica**.
+SDD V2 está completando una reconstrucción de producto antes de volver al dogfood.
 
-No hay actualmente una Alpha de producto considerada válida para instalar o dogfoodear. `0.2.0-alpha.1` fue invalidada como baseline: su implementación file-based de control state, su CLI y el packaging de skills no forman parte de la línea activa.
+La V2 busca preservar las garantías útiles de Spec-Driven Development —intención, scope,
+acceptance, risks, decisions, evidence y continuidad— sin volver a una cadena obligatoria
+de proposal/spec/design/tasks ni duplicar capacidades de Codex, OpenCode y otros harnesses.
 
-La historia permanece disponible en Git y la evidencia empírica relevante permanece en `docs/dogfood-evidence.md`. El árbol activo contiene solo decisiones y componentes que siguen siendo candidatos reales.
-
-## Objetivo
-
-Conservar las garantías útiles de Spec-Driven Development —intención durable, continuidad, decisiones materiales, scope control y verificación— con menos ceremony y sin reconstruir capacidades que ya ofrecen Codex, OpenCode u otros harnesses.
-
-Arquitectura objetivo:
+## Estado
 
 ```text
-Host Agent
-   |
-   v
-SDD Semantic API
-   |
-   v
-SDD Domain Model
-   |
-   v
-Memory Contract
-   |
-   v
-Backend Adapter
-   |
-   +--> Engram (primer candidato externo)
-   +--> otro backend
+Architecture ownership              DONE
+Memory Contract                     DONE
+Engram backend fit                  DONE
+Domain Model                        DONE
+Application API contract            DONE
+Architecture / contract freeze      DONE
+
+Product implementation              NEXT
+Pre-dogfood gate                    PENDING
+Fresh independent audit             PENDING
+DOGFOOD                             PENDING
 ```
 
-Engram es una dependencia externa. SDD no modifica ni mantiene un fork de Engram para hacer encajar su arquitectura.
+No hay actualmente una Alpha instalable considerada válida.
+
+`0.2.0-alpha.1` fue invalidada como baseline. Git conserva su historia y
+`docs/dogfood-evidence.md` conserva la evidencia empírica relevante.
+
+## Arquitectura
+
+```text
+Host Agent / Harness
+        |
+        v
+Runtime Projection
+        |
+        v
+SDD Application API
+        |
+        v
+Domain Model
+ Change / Decision / Evidence / Knowledge
+        |
+        v
+Memory Port
+        |
+        v
+Backend Repository
+        |
+        +--> Engram
+        +--> otro backend
+```
+
+**Application API no significa REST.**
+
+Es la frontera programática transport-free de SDD. Puede exponerse por library, MCP, CLI y,
+solo si aparece una necesidad real, HTTP/REST.
+
+## Principio operativo
+
+```text
+ephemeral
+  -> ACT -> verify -> fin
+
+receipt
+  -> ACT -> verify -> Change closed/completed
+
+continuity
+  -> Change open + actionable frontier
+  -> handoff/restart
+  -> exact recovery
+  -> ACT
+  -> evidence-backed close
+```
+
+No existe una llamada SDD obligatoria por request.
+
+## Garantías conservadas
+
+De la riqueza histórica de V1/V2 se conservan de forma adaptativa:
+
+```text
+intent
+scope
+acceptance
+constraints
+risks
+edge cases
+material open questions
+rollback cuando aporta
+Decision
+structured Evidence
+continuity/frontier
+scope evolution
+Knowledge reusable
+```
+
+Lo que se elimina es la obligación de materializar artefactos por ceremonia.
 
 ## Fuentes activas
 
 ```text
-docs/rebaseline-architecture.md  frontera y principios del producto
-docs/memory-contract.md          contrato durable validado para la primera Alpha
-docs/change-model.md             modelo de Change validado contra ese contrato
-docs/dogfood-evidence.md         evidencia empírica de dogfood histórico
+docs/rebaseline-architecture.md  arquitectura cross-layer congelada
+docs/change-model.md             Domain Model de Change/Decision/Evidence/Knowledge
+docs/memory-contract.md          frontera durable validada
+docs/semantic-api.md             Application API y casos de uso
+docs/dogfood-evidence.md         evidencia histórica normalizada
 ```
 
-`memory-contract.md` y `change-model.md` están reconciliados para el modelo inicial: varios Changes independientes y handoff secuencial del mismo Change, sin prometer same-Change multi-writer.
+Jerarquía:
 
-## Estado del producto
+```text
+rebaseline-architecture
+-> contratos especializados
+-> implementación
+-> runtime projection
+```
 
-Temporalmente **no existen** en la línea activa:
-
-- CLI SDD productivo;
-- runtime kernel distribuible;
-- control state local;
-- skills SDD obligatorias;
-- host adapter productivo;
-- suite de tests de Alpha.1;
-- migration desde Alpha.1.
-
-Se reintroduce una pieza solo cuando su responsabilidad esté cerrada y pueda probarse de forma falsable.
+La implementación no puede prometer más que los contratos.
 
 ## Engram
 
-La infraestructura Docker validada se conserva en:
+`infra/engram/` conserva la infraestructura validada para Engram 1.20.0.
+
+F5 demostró mediante superficie pública:
 
 ```text
-infra/engram/
-```
-
-Engram 1.20.0 quedó validado como **backend candidato conformante para el modelo inicial** mediante su superficie HTTP pública, sin fork, sin acceso al SQLite privado y sin side-state autoritativo.
-
-El spike real demostró:
-
-```text
-put/get round-trip
-update secuencial
-recovery desde una instancia nueva
-identidad exacta
-bounded list con complete=false al superar el bound
+put/get
+sequential update
+fresh-instance recovery
+exact identity
+bounded list
 project isolation
-reconciliación de respuesta perdida en POST/PATCH
+lost POST/PATCH reconciliation
 backend unavailable
-cleanup sin residuos
+clean cleanup
 ```
 
-La capacidad validada es deliberadamente acotada:
+No se modifica Engram, no se lee su SQLite privado y no existe `.sdd/state.json` como segunda
+autoridad.
+
+El transporte físico usado por el spike no es automáticamente la distribución final.
+
+## Modelo de concurrencia
+
+Soportado:
 
 ```text
-✓ Changes independientes
-✓ handoff secuencial del mismo Change
-✗ same-Change concurrent writers
+multiple agents/worktrees sobre Changes independientes
+handoff secuencial del mismo Change
 ```
 
-El transporte final del producto todavía no está decidido. El spike validó el **fit semántico de Engram**, no que `docker exec + HTTP` deba ser la distribución final.
+No soportado:
 
-No se resuelve una incompatibilidad futura mediante:
+```text
+same-Change concurrent writers
+```
 
-- un fork SDD de Engram;
-- acceso al schema SQLite privado de Engram;
-- `.sdd/state.json` como segunda autoridad;
-- parsing de output humano;
-- fuzzy ranking tratado como identidad canónica.
+No CAS/locks por anticipado.
 
-## Disciplina del árbol activo
+## Evidence
+
+Completion durable no se justifica con:
+
+```text
+"done"
+"tests pass"
+```
+
+sin estructura.
+
+Modelo mínimo:
+
+```yaml
+method: test | build | lint | runtime | inspection | diff | external | other
+result: pass | fail | observed
+summary: ...
+covers: [A1]
+source: optional
+```
+
+La observación la produce el host; SDD valida estructura y relación con acceptance.
+
+## Scope evolution
+
+Primera implementación productiva debe soportar:
+
+```text
+refineChange
+spawnChange
+addDependency
+```
+
+Split/supersede siguen en el Domain Model pero no se automatizan hasta tener semantics seguras
+de partial failure multi-record.
+
+## Exposure
+
+Primer transport objetivo para agentes:
+
+```text
+MCP
+```
+
+porque los harnesses target ya consumen tools estructuradas.
+
+Library es la composición interna.
+
+CLI puede ser fallback/admin.
+
+REST no forma parte del mínimo y solo se agregará ante un consumidor real.
+
+## Código productivo esperado
+
+Block B separa responsabilidades:
+
+```text
+domain
+application
+ports
+Engram adapter
+MCP transport
+Codex host/bootstrap
+runtime projection
+tests
+```
+
+El spike monolítico `experiments/semantic-api/` **no se copia como producto**.
+
+Se reutilizan sus invariantes y casos negativos; luego se elimina cuando la implementación
+productiva los superseda.
+
+## Active-tree hygiene
 
 Git es el archivo histórico.
 
-Cuando una hipótesis o implementación queda invalidada:
-
-1. extraer la evidencia que todavía importa;
-2. actualizar la decisión canónica que la reemplaza;
-3. eliminar el artefacto invalidado del árbol activo.
-
-No se crean carpetas `legacy/`, `deprecated/`, `old/` o documentos tombstone solo para conservar código muerto.
-
-## Próxima frontier
-
-**F6 — Semantic API.**
-
-Objetivo: definir la capa mínima que evita que el LLM implemente manualmente lifecycle, persistence, scope y closure en cada request.
-
-La primera frontier de F6 debe responder, antes de crear runtime/CLI/skills:
+Cuando una implementación/experimento queda supersedido:
 
 ```text
-qué operaciones de dominio necesita realmente el agente
-qué invariantes debe imponer la API
-qué parte es pura lógica y qué parte depende de Memory Contract
-cómo mantener ephemeral/receipt/continuity adaptativos
-cómo probar closure y recovery sin introducir ceremony
+extraer evidencia útil
+-> actualizar decisión
+-> borrar artefacto muerto
 ```
 
-No se reintroduce todavía una Alpha instalable.
+No carpetas `legacy/old/deprecated`.
+
+## Próximo bloque
+
+**Block B — Product implementation.**
+
+Debe implementar el diseño congelado sin abrir nuevas frontiers conceptuales:
+
+```text
+Domain
+Application API
+Memory Port
+Engram Repository
+MCP transport
+Codex binding
+Runtime Projection
+tests
+```
+
+Después viene un único Block C de gate integral y, recién entonces, una auditoría independiente
+en chat nuevo antes de dogfood.

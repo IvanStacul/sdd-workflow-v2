@@ -1,313 +1,172 @@
-# SDD V2 — Change Model
+# SDD V2 — Domain Model
 
-## 1. Estado y propósito
+## 1. Propósito
 
-**Estado:** contrato activo de dominio para la reconstrucción de SDD V2.
-
-Un `Change` representa una intención durable de modificar un proyecto cuando esa intención necesita trazabilidad, cierre verificable o continuidad más allá del contexto inmediato.
-
-Este documento define:
-
-- cuándo existe un Change;
-- qué identidad tiene;
-- lifecycle;
-- contenido mínimo y adaptativo;
-- continuity/frontier;
-- scope drift y relaciones;
-- receipt;
-- evidence y closure;
-- el modelo de concurrencia soportado.
-
-Depende de:
+Este documento define el modelo semántico durable de la primera Alpha:
 
 ```text
-rebaseline-architecture.md
-  -> una sola autoridad durable
-  -> host-native first
-  -> no side-state autoritativo
-  -> no garantías no justificadas
-
-memory-contract.md
-  -> put / get / list
-  -> exactitud semántica verificable
-  -> IDs sin allocator central
-  -> same-Change concurrent writers fuera de la primera Alpha
+Change
+Decision
+Evidence
+Knowledge
 ```
 
-No define:
+No define transport, Engram, MCP, CLI ni filesystem.
 
-- formato físico de Engram;
-- adapter;
-- CLI;
-- runtime;
-- skills;
-- WorkUnits;
-- router `direct|compact|full`;
-- migration desde Alpha.1.
-
----
-
-## 2. Qué problema resuelve Change
-
-El repo muestra **qué código existe ahora**.
-
-No siempre conserva suficientemente:
-
-- qué resultado se intentaba obtener;
-- qué límites/no-objetivos eran importantes;
-- qué queda pendiente al cambiar de sesión/agente;
-- por qué se tomó una decisión material;
-- qué evidencia justifica decir que el trabajo terminó;
-- qué nueva intención apareció durante la ejecución.
-
-Change cubre ese espacio.
-
-No equivale a:
+Autoridad cross-layer:
 
 ```text
-Change != chat
-Change != sesión
-Change != branch
-Change != commit
-Change != ticket externo
-Change != plan completo
-Change != lista de tareas
-Change != WorkUnit
+docs/rebaseline-architecture.md
 ```
 
-La meta es conservar semántica útil sin volver a:
+Persistencia física:
 
 ```text
-proposal
--> spec
--> design
--> tasks
--> state
--> verify document
+docs/memory-contract.md
+```
+
+Casos de uso:
+
+```text
+docs/semantic-api.md
 ```
 
 ---
 
-## 3. Cuándo existe un Change
+## 2. Principios
 
-No toda petición crea estado SDD.
+### D1 — Garantía antes que artefacto
 
-La política durable conserva tres comportamientos.
+Scope, acceptance, risk, evidence y decision existen porque reducen riesgo o pérdida de
+contexto; no porque una plantilla los enumera.
 
-### 3.1 Ephemeral
+### D2 — Densidad adaptativa
 
-Trabajo donde no existe valor suficiente en crear un record durable SDD.
+No se persisten campos vacíos.
 
-Ejemplos típicos:
+### D3 — Identidad estable
 
-- wording/UI cosmético;
-- rename mecánico;
-- corrección trivial;
-- cambio local cerrado cuya intención se reconstruye fácilmente desde repo/tests;
-- trabajo sin continuidad pendiente ni decisión durable.
-
-Resultado:
+Todos los records independientes usan IDs collision-resistant sin allocator central:
 
 ```text
-no Change
+CHG-<ULID>
+DEC-<ULID>
+EVD-<ULID>
+KNW-<ULID>
 ```
 
-No se crea un Change retrospectivo para demostrar que SDD participó.
+### D4 — Backend independence
 
-### 3.2 Receipt
-
-Trabajo material que ya terminó dentro del contexto actual, pero cuyo resultado merece una huella durable.
-
-El Change puede crearse **al cierre**.
-
-Ejemplo conceptual:
-
-```yaml
-change:
-  id: CHG-...
-  title: Cambiar estado del ticket desde detalle
-  lifecycle: closed
-  intent: Permitir alternar open/closed desde la vista de detalle.
-
-  close:
-    reason: completed
-    outcome: El estado puede cambiarse desde detalle y persiste.
-    evidence:
-      summary: Tests de feature cubren ambos estados y persistencia.
-```
-
-Un receipt no inventa:
-
-- continuity previa;
-- WorkUnits;
-- planning history;
-- session summary;
-- timeline.
-
-### 3.3 Continuity
-
-Trabajo que necesita sobrevivir al contexto actual.
-
-Se usa cuando:
-
-- continuará en otra sesión;
-- existe handoff explícito;
-- queda una frontier pendiente;
-- existe blocker o decisión pendiente;
-- reconstruir intención/restricciones sería costoso o riesgoso.
-
-Resultado:
+Ningún payload contiene:
 
 ```text
-open Change
-+ continuity suficiente para reanudar
+Engram observation id
+topic_key
+revision_count
+MCP tool name
+HTTP URL
+SQLite row id
+Codex session id
 ```
 
-### 3.4 Regla
+### D5 — Repo truth permanece en repo
+
+SDD conserva semántica y conocimiento necesario para continuidad; no duplica código,
+schema o documentación que puede inspeccionarse de forma dirigida.
+
+---
+
+# Parte I — Change
+
+## 3. Qué es un Change
+
+Un Change representa una **intención durable**.
+
+Existe cuando:
 
 ```text
-sin valor durable                -> ephemeral
-trabajo material ya terminado    -> receipt
-trabajo durable todavía pendiente -> continuity
+receipt
+o
+continuity
 ```
 
-`receipt` y `continuity` **no son lifecycle states**.
+Un trabajo ephemeral puede terminar sin Change.
 
-Describen cuándo y cuánto estado durable hace falta.
+Change no es:
+
+- sesión;
+- conversación;
+- task list;
+- branch;
+- WorkUnit;
+- proposal;
+- changelog.
 
 ---
 
 ## 4. Identidad
 
-### 4.1 Requisito
-
-Un Change necesita un ID:
-
-- estable;
-- backend-independent;
-- host-independent;
-- generado sin contador central;
-- seguro para múltiples agentes/worktrees que creen Changes distintos;
-- no dependiente de un file allocator.
-
-### 4.2 Formato
-
-La primera Alpha usa:
+Formato:
 
 ```text
 CHG-<ULID>
 ```
 
-Ejemplo:
+Propiedades:
+
+- estable;
+- host-independent;
+- backend-independent;
+- sin contador central;
+- seguro para creación de Changes independientes.
+
+La Application API genera el ID.
+
+Antes de crear:
 
 ```text
-CHG-01K2Z8E7M3R6J4V9Q1T5X8N2CW
+generate
+-> exact get candidate
+-> if exists: regenerate
+-> if not_found: persist
 ```
 
-Motivos:
+No se presenta como atomic reservation ni como protección para same-Change multiwriter.
 
-- puede generarse localmente;
-- no requiere coordinación;
-- incorpora orden temporal aproximado;
-- tiene espacio aleatorio suficiente para evitar un allocator;
-- es portable entre backends;
-- existe como formato estándar y no inventamos una secuencia propia.
-
-La parte `CHG-` distingue el tipo lógico.
-
-### 4.3 Por qué se retira `CHG-YYYYMMDD-NN`
-
-El formato anterior era legible, pero `NN` introducía una obligación de coordinación:
-
-```text
-¿cuál fue el último número?
--> reservar siguiente
--> evitar carrera
--> mantener allocator
-```
-
-Eso terminó empujando `state.json`, high-watermarks y luego `create-if-absent` al núcleo.
-
-La legibilidad humana se resuelve con `title`/`slug`, no convirtiendo el ID en un contador de workflow.
-
-### 4.4 Collision handling
-
-La Semantic API genera el ULID.
-
-Puede comprobar:
-
-```text
-get(candidate)
-```
-
-y regenerar si ya existe.
-
-Esto no se presenta como una reserva atómica.
-
-Dentro del modelo soportado, la probabilidad de colisión accidental es suficientemente baja y same-ID concurrent creation no requiere coordinación central.
-
-Un ID existente **nunca se reutiliza deliberadamente para otra intención**.
-
-### 4.5 Title y slug
-
-`title` es requerido para ergonomía humana.
-
-`slug` es opcional.
-
-Ejemplo:
-
-```yaml
-id: CHG-01K2Z8E7M3R6J4V9Q1T5X8N2CW
-title: Estado del ticket desde detalle
-slug: ticket-status-toggle
-```
-
-Cambiar title/slug no cambia identidad.
+Title puede cambiar sin cambiar identidad.
 
 ---
 
 ## 5. Lifecycle
 
-El lifecycle canónico es:
+Canónico:
 
 ```text
 open
 closed
 ```
 
-Nada más.
-
 No son lifecycle states:
 
 ```text
 planning
 implementing
-verifying
 blocked
-ready
+verifying
 review
+ready
 archived
 ```
 
-### 5.1 `open`
+### Open
 
-Existe trabajo o una decisión pendiente bajo esa intención.
+Todavía existe trabajo/decisión pendiente bajo esa intención.
 
-Puede estar:
+### Closed
 
-- en implementación;
-- esperando input;
-- bloqueado;
-- parcialmente completado;
-- esperando otra sesión/agente.
+No queda frontier ejecutable bajo esa identidad.
 
-### 5.2 `closed`
-
-Ya no existe trabajo pendiente bajo esa identidad.
-
-Todo `closed` tiene `close.reason`.
-
-Razones core:
+Todo closed tiene `close.reason`:
 
 ```text
 completed
@@ -316,152 +175,85 @@ superseded
 split
 ```
 
-#### completed
+La primera Application API productiva automatiza únicamente:
 
-La intención se considera satisfecha y existe evidence proporcional.
+```text
+completed
+cancelled
+```
 
-#### cancelled
-
-La intención deja de perseguirse.
-
-Puede conservar `rationale` cuando evita ambigüedad.
-
-#### superseded
-
-Otro Change reemplaza esta intención.
-
-Debe existir relación verificable hacia el reemplazante.
-
-#### split
-
-El Change original deja de ser unidad ejecutable porque su scope completo fue repartido deliberadamente en otros Changes.
-
-Crear un hijo no obliga a cerrar el parent como `split`.
+`superseded/split` permanecen semánticamente válidos, pero no se ejecutan mediante
+operación multi-record automática todavía.
 
 ---
 
 ## 6. Forma lógica
 
-Forma máxima conceptual:
+Mínimo:
 
 ```yaml
-change:
-  id: CHG-01K2Z8E7M3R6J4V9Q1T5X8N2CW
-  title: Estado del ticket desde detalle
-  slug: ticket-status-toggle
-
-  lifecycle: open
-
-  intent: >
-    Permitir cambiar un ticket entre open y closed desde su detalle,
-    sin introducir estados nuevos.
-
-  contract:
-    scope:
-      in:
-        - cambiar estado desde detalle
-      out:
-        - agregar estados adicionales
-    acceptance:
-      - id: A1
-        condition: solo se aceptan open y closed
-      - id: A2
-        condition: el estado persiste y vuelve a mostrarse correctamente
-    constraints:
-      - conservar compatibilidad con los valores actuales
-
-  continuity:
-    completed:
-      - endpoint PATCH implementado y cubierto por test
-    next: agregar el control en la vista de detalle
-    blockers: []
-
-  relations:
-    split_from: CHG-...
-    spawned_from: CHG-...
-    depends_on:
-      - CHG-...
-    supersedes: CHG-...
-
-  close:
-    reason: completed
-    outcome: ...
-    evidence:
-      summary: ...
-      refs:
-        - EVD-...
+id: CHG-01...
+title: ...
+intent: ...
+lifecycle: open
 ```
 
-Esto **no es una plantilla obligatoria**.
+Forma rica posible:
 
-No se escriben campos vacíos para parecer completo.
+```yaml
+id: CHG-01...
+title: Estado del ticket desde detalle
+intent: >
+  Permitir alternar open/closed desde detalle sin introducir
+  estados adicionales.
+lifecycle: open
+
+contract:
+  scope:
+    in:
+      - edición del estado desde detalle
+    out:
+      - nuevos estados
+  acceptance:
+    - id: A1
+      condition: solo open y closed son aceptados
+    - id: A2
+      condition: el estado persiste y se vuelve a mostrar
+  constraints:
+    - preservar contrato público actual
+  risks:
+    - clientes existentes podrían enviar valores legacy
+  edge_cases:
+    - update idempotente al mismo estado
+  open_questions:
+    - confirmar si el endpoint actual ya valida autorización
+  rollback:
+    strategy: revert
+    note: retirar control UI y conservar endpoint anterior
+
+continuity:
+  completed:
+    - endpoint actual localizado
+  next: agregar control en detalle usando el endpoint existente
+  blockers: []
+
+relations:
+  spawned_from: CHG-...
+  depends_on:
+    - CHG-...
+```
+
+No es una plantilla obligatoria.
 
 ---
 
-## 7. Campos mínimos
+## 7. Intent
 
-Todo Change durable contiene:
+Siempre requerido.
 
-```text
-id
-title
-intent
-lifecycle
-```
+Debe expresar el cambio observable y distinguir éxito.
 
-El envelope del Memory Contract aporta:
-
-```text
-project_id
-kind=change
-created_at
-updated_at
-```
-
-No existe `version` obligatorio.
-
-### Cuando aporta valor
-
-Puede agregar:
-
-```text
-slug
-contract
-continuity
-relations
-close
-```
-
-Y dentro de `contract`, solo si son materiales:
-
-```text
-scope
-acceptance
-constraints
-risks
-edge_cases
-rollback
-```
-
-### Regla de densidad
-
-> Un campo entra porque reduce ambigüedad, riesgo o costo de recovery; no porque existe en el schema máximo.
-
----
-
-## 8. Intent
-
-`intent` expresa el cambio observable que se persigue.
-
-Debe permitir distinguir:
-
-```text
-qué significa éxito
-```
-
-sin narrar el HOW local.
-
-Demasiado pobre:
+Malo:
 
 ```text
 "tickets"
@@ -471,27 +263,22 @@ Demasiado pobre:
 Demasiado procedural:
 
 ```text
-"editar controller, luego route, luego Blade..."
+"editar controller, luego route, luego Blade"
 ```
 
 Preferido:
 
 ```text
-"Permitir cambiar un ticket entre open y closed desde su vista de detalle,
-sin introducir estados adicionales."
+"Permitir alternar open/closed desde detalle sin introducir estados nuevos."
 ```
 
-El HOW pertenece al executor/repo salvo que una restricción técnica sea material.
+HOW local pertenece al executor/repo salvo constraint material.
 
 ---
 
-## 9. Contract adaptativo
+## 8. Contract adaptativo
 
-No existe una spec obligatoria por Change.
-
-`contract` aparece cuando `intent` solo no evita suficiente ambigüedad.
-
-### 9.1 Scope
+### 8.1 Scope
 
 ```yaml
 scope:
@@ -499,843 +286,516 @@ scope:
   out: [...]
 ```
 
-`out` solo enumera no-objetivos que realmente previenen scope drift.
+`out` contiene no-objetivos que realmente previenen drift.
 
-No se listan archivos por anticipado salvo que sean una restricción material.
-
-### 9.2 Acceptance
-
-Acceptance expresa condiciones observables de éxito.
-
-Ejemplo:
+### 8.2 Acceptance
 
 ```yaml
 acceptance:
   - id: A1
     condition: pending es rechazado
-  - id: A2
-    condition: open/closed persisten
 ```
 
-Debe evitar tautologías:
+Reglas:
 
-```text
-"funciona"
-"implementar lo pedido"
+- ID único dentro del Change;
+- condition no vacía;
+- observable;
+- no tautológica.
+
+### 8.3 Constraints
+
+Array de restricciones materiales.
+
+### 8.4 Risks
+
+Array de riesgos que cambian solución/verification/rollback.
+
+### 8.5 Edge cases
+
+Array de casos límite materiales.
+
+### 8.6 Open questions
+
+Array de preguntas todavía no resueltas que bloquean o pueden cambiar el diseño.
+
+Si dejan de ser materiales, se remueven del snapshot vigente.
+
+### 8.7 Rollback
+
+Objeto opcional:
+
+```yaml
+rollback:
+  strategy: revert | disable | migrate_back | manual | other
+  note: ...
 ```
 
-Los IDs `A1`, `A2` son locales al Change y existen solo cuando ayudan a mapear evidence.
+`note` requerido.
 
-### 9.3 Constraints
-
-Restricciones que afectan la solución o recovery.
-
-Ejemplos:
-
-- mantener compatibilidad pública;
-- no introducir dependencia nueva;
-- preservar formato existente.
-
-### 9.4 Risks / edge cases / rollback
-
-Son opcionales.
-
-Se guardan cuando cambian:
-
-- implementación;
-- decisión;
-- verification;
-- rollback;
-- próxima frontier.
-
-No se crean como checklist.
+No se persiste rollback por cambios triviales.
 
 ---
 
-## 10. Continuity y Execution Frontier
+## 9. Contract refinement
 
-`continuity` existe cuando un Change abierto debe cruzar una frontera de contexto.
+Refinement modifica la misma intención.
 
-Forma pequeña:
+Semántica del patch:
+
+```text
+campo omitido -> preservar
+valor válido   -> reemplazar esa sección
+null           -> remover sección opcional
+array []       -> normalizar a sección ausente
+```
+
+Refinement puede:
+
+- cambiar title;
+- precisar intent sin cambiar objetivo material;
+- reducir/modificar scope;
+- reemplazar acceptance deliberadamente;
+- agregar/remover constraints, risks, edge cases u open questions;
+- agregar/remover rollback.
+
+No puede cambiar:
+
+```text
+id
+project_id
+kind
+lifecycle
+relations
+close
+continuity
+```
+
+Cambiar objetivo material requiere otro Change.
+
+---
+
+## 10. Continuity
+
+Solo en Change `open` cuando el trabajo debe sobrevivir.
 
 ```yaml
 continuity:
   completed:
-    - hechos ya confirmados que no deben repetirse
-  next: próxima acción concreta y segura
+    - hechos confirmados que evitan repetir trabajo
+  next: acción concreta y segura
   blockers:
-    - bloqueo real si existe
+    - bloqueo real
 ```
 
-Restricciones durables siguen en `contract.constraints` o en una Decision referenciada; no se duplican aquí.
+### `next`
 
-### 10.1 `next` es la frontier
+Obligatorio para continuity.
 
 Debe permitir:
 
 ```text
-get(Change)
--> inspección dirigida del repo
--> ACT
-```
-
-Malo:
-
-```text
-seguir
-terminar UI
-revisar pendientes
-```
-
-Bueno:
-
-```text
-Agregar en el detalle del ticket un selector open/closed que use
-el PATCH existente y conserve las etiquetas actuales.
-```
-
-### 10.2 `completed`
-
-Solo resume hechos que evitan repetir trabajo.
-
-No es changelog.
-
-### 10.3 `blockers`
-
-`blocked` es una condición derivada, no lifecycle.
-
-Puede surgir porque:
-
-- `continuity.blockers` tiene contenido;
-- una dependencia no está satisfecha;
-- falta una decisión material.
-
-### 10.4 Handoff invariant
-
-Antes de entregar un Change abierto a otra sesión/agente:
-
-```text
-intent vigente
-+ contract material
-+ next frontier
-+ blockers/dependencies relevantes
-```
-
-deben estar confirmados durablemente.
-
-`SessionSummary` no es necesario.
-
----
-
-## 11. Scope drift
-
-Una conversación no amplía silenciosamente el Change.
-
-### Dentro del mismo Change
-
-Actualizar el mismo Change cuando:
-
-- se aclara wording;
-- se precisa acceptance;
-- se incorpora un edge case coherente;
-- se restringe scope sin cambiar el objetivo;
-- se descubre HOW local necesario.
-
-### Nuevo Change
-
-Crear otro Change cuando:
-
-- aparece una capability independiente;
-- el objetivo cambia materialmente;
-- el trabajo puede completarse/posponerse por separado;
-- mezclarlo haría ambiguo `completed`.
-
-### Split
-
-Parte del scope original se convierte en Changes independientes:
-
-```text
-child -> split_from -> original
-```
-
-### Spawn
-
-Durante el trabajo aparece una intención nueva fuera del scope original:
-
-```text
-new -> spawned_from -> origin
-```
-
-### Supersede
-
-Una intención nueva reemplaza otra:
-
-```text
-new -> supersedes -> old
-```
-
----
-
-## 12. Relaciones core
-
-Solo se persisten relaciones que cambian interpretación, orden o scope:
-
-```text
-split_from
-spawned_from
-depends_on
-supersedes
-```
-
-No se persiste `blocks`.
-
-Es derivable:
-
-```text
-A depends_on B
-=> B blocks A
-```
-
-Tampoco se incluye `related_to` en el core porque su semántica débil puede producir graph noise.
-
-### No duplicar inversos
-
-No guardar simultáneamente:
-
-```text
-A depends_on B
-B blocks A
-```
-
-como dos autoridades.
-
----
-
-## 13. Decisions
-
-No toda elección merece un record durable.
-
-Una Decision separada se justifica cuando:
-
-- afecta arquitectura o contrato público;
-- cambia seguridad/comportamiento material;
-- tiene trade-offs relevantes;
-- sería costoso o riesgoso redescubrirla;
-- otro actor necesita conocerla;
-- su supersession/history importa.
-
-Decisiones locales rutinarias permanecen en repo/contexto.
-
-El Change conserva solo:
-
-```text
-constraint/resumen que necesita para ejecutar
-+
-ref a Decision cuando la historia propia aporta valor
-```
-
-Recovery de una frontier conocida no debería requerir buscar todas las Decisions.
-
----
-
-## 14. Evidence
-
-Evidence es información observable que soporta una afirmación de cumplimiento.
-
-### 14.1 Embebida
-
-Preferida cuando basta un resumen pequeño:
-
-```yaml
-close:
-  reason: completed
-  outcome: El estado puede alternarse y persiste.
-  evidence:
-    summary: >
-      Feature tests cubren open/closed y rechazo de pending;
-      diff check correcto.
-```
-
-### 14.2 Record separado
-
-Crear `Evidence` propia cuando:
-
-- necesita auditoría/identidad;
-- varios criterios la referencian;
-- tiene metadata estructurada relevante;
-- el resumen dentro del Change sería insuficiente.
-
-Ejemplo:
-
-```yaml
-evidence:
-  id: EVD-<ULID>
-  subject_id: CHG-...
-  observation: Feature tests de estado
-  result: pass
-  covers: [A1, A2]
-```
-
-### 14.3 No es string ceremonial
-
-Para `completed`, SDD debe poder responder:
-
-```text
-qué se observó
-qué resultado produjo
-qué afirmación/acceptance soporta
-```
-
-No alcanza:
-
-```text
-evidence = "done"
-```
-
-### 14.4 Proporcionalidad
-
-No toda closure requiere test suite completa.
-
-Ejemplos:
-
-- cambio mecánico: readback/diff;
-- comportamiento local: targeted test;
-- boundary/integración: integration/runtime check;
-- riesgo alto: checks más amplios.
-
----
-
-## 15. Closure
-
-### 15.1 completed
-
-Antes de cerrar:
-
-1. el outcome responde al intent;
-2. no queda frontier bajo ese Change;
-3. acceptance explícita está cubierta suficientemente;
-4. no existe blocker conocido incompatible con completion;
-5. evidence necesaria está confirmada;
-6. el Change cerrado puede persistirse.
-
-Flujo:
-
-```text
 get Change
--> verificar closure
--> persistir Evidence separada si hace falta
--> put Change closed
--> confirmar
-```
-
-No existe requisito CAS en la primera Alpha.
-
-Esto es correcto porque concurrent writers sobre el mismo Change no forman parte del modelo soportado.
-
-### 15.2 cancelled
-
-No exige evidence de cumplimiento.
-
-El Change deja de tener frontier pendiente.
-
-### 15.3 superseded
-
-Debe identificar el Change reemplazante.
-
-### 15.4 split
-
-Se usa solo cuando todo el trabajo pendiente del original fue trasladado deliberadamente a hijos y el original deja de ser unidad ejecutable.
-
----
-
-## 16. Receipt
-
-Receipt **no es una entidad distinta**.
-
-Es un Change cerrado mínimo creado al final del trabajo.
-
-Ejemplo:
-
-```yaml
-id: CHG-01K2Z8...
-title: Estado del ticket desde detalle
-lifecycle: closed
-intent: Permitir cambiar open/closed desde detalle.
-
-close:
-  reason: completed
-  outcome: Cambio disponible y persistente.
-  evidence:
-    summary: Feature tests relevantes pasan.
-```
-
-Puede incluir contract/Decision/Evidence refs si realmente fueron necesarias.
-
-No requiere continuity retroactiva.
-
-### Materialidad candidata
-
-Tienden a merecer receipt:
-
-- capability de dominio;
-- schema persistente;
-- API/contrato público;
-- seguridad/policy material;
-- dependencia/tooling material;
-- arquitectura significativa.
-
-Esto es una heurística a validar, no una checklist automática.
-
----
-
-## 17. Continuity
-
-Un Change de continuity permanece `open`.
-
-Antes del handoff debe contener suficiente estado para:
-
-```text
-nuevo proceso
--> get exact Change
 -> inspección dirigida
 -> ACT
 ```
 
-No depende de:
+No es roadmap ni plan completo.
 
-- chat previo;
-- SessionSummary;
-- Progress record;
-- WorkUnit;
-- state.json local.
+### `completed`
 
-### Recovery con ID conocido
+Resumen compacto de hechos confirmados.
 
-```text
-get(Change ID)
--> intent + contract material + continuity
--> ACT
-```
+No changelog.
 
-### Recovery sin ID
+### `blockers`
 
-```text
-list(project, kind=change)
--> filtrar lifecycle=open
--> resolver relevante
--> get exact
--> ACT
-```
+Hechos que impiden ejecutar/terminar con seguridad.
 
-Si `list` no es completo dentro del bound declarado, SDD no finge que enumeró todos los Changes.
+`blocked` es derivado; no lifecycle.
 
 ---
 
-## 18. Concurrencia soportada
+## 11. Handoff
 
-### 18.1 Changes independientes
-
-Soportado:
+Antes de entregar un Change abierto:
 
 ```text
-Agent A -> Change A
-Agent B -> Change B
+intent vigente
++ contract material
++ continuity.next
++ blockers relevantes
 ```
 
-incluyendo worktrees distintos.
+deben estar confirmados durablemente.
 
-Cada Change tiene identidad collision-resistant y persistencia independiente.
-
-### 18.2 Handoff secuencial
-
-Soportado:
-
-```text
-Agent A
--> persist frontier
--> termina
-
-Agent B
--> get Change
--> continúa
-```
-
-### 18.3 Same-Change concurrent writers
-
-No soportado en la primera Alpha:
-
-```text
-Agent A ----\
-             > mutan el mismo Change simultáneamente
-Agent B ----/
-```
-
-No existe lock/lease/CAS implícito.
-
-SDD debe evitar planificar ese topology sobre la misma identidad.
-
-Si el host delega trabajo paralelo, debe hacerlo sobre unidades/Changes realmente independientes o mantener un único writer del Change canónico.
-
-### 18.4 Evolución futura
-
-Si same-Change multi-writer demuestra valor real:
-
-```text
-Change Model
--> define merge/ownership semantics
--> Memory Contract agrega conditional_put
--> adapter demuestra capability
-```
-
-No se agrega CAS antes de esa decisión.
+No SessionSummary obligatorio.
 
 ---
 
-## 19. WorkUnit, Progress y SessionSummary
+## 12. Scope evolution
 
-No forman parte del core actual.
+### Refinement
 
-### WorkUnit
+Misma intención; actualiza el Change.
 
-Puede volver si dogfood demuestra que una unidad durable de ejecución distinta de Change reduce costo cognitivo/coordinación.
+### Spawn
 
-Hasta entonces el host puede:
-
-- dividir trabajo localmente;
-- usar subagentes;
-- ejecutar pasos internos;
-
-sin persistir otra entidad SDD.
-
-### Progress
-
-No existe como record separado.
-
-La continuidad vigente vive en:
+Nueva intención fuera del scope original:
 
 ```text
-Change.continuity
+child.relations.spawned_from = origin
 ```
 
-### SessionSummary
+El origin no necesita mutarse.
 
-No es primitive SDD.
+### Dependency
 
-El dogfood mostró que Change + frontier bastaba para recovery y que session lifecycle agregó fricción.
+```text
+change.relations.depends_on = [target]
+```
+
+No se persiste `blocks`.
+
+### Split / supersede
+
+Reconocidos por el modelo:
+
+```text
+split_from
+supersedes
+```
+
+pero no automatizados por la primera Application API por requerir coordinación
+multi-record con partial-failure semantics.
 
 ---
 
-## 20. Knowledge
+## 13. Closure
 
-Knowledge durable contiene hechos reusables más allá de un Change.
+### completed
 
-Ejemplo:
+Precondiciones:
+
+1. outcome responde al intent;
+2. no queda frontier bajo ese Change;
+3. no hay blockers activos;
+4. acceptance explícita está cubierta;
+5. coverage no contiene acceptance IDs inexistentes;
+6. existe evidence estructurada suficiente;
+7. ningún Evidence usado como soporte tiene `result=fail`;
+8. el Change cerrado puede persistirse.
+
+Efecto:
 
 ```text
-"Este proyecto usa la convención pivot tag_ticket."
+lifecycle = closed
+close.reason = completed
+continuity = removed
+```
+
+No queda frontier stale.
+
+### cancelled
+
+No requiere evidence de cumplimiento.
+
+```text
+lifecycle = closed
+close.reason = cancelled
+continuity = removed
+```
+
+Puede persistir rationale.
+
+### superseded / split
+
+Semántica válida de modelo; operación productiva automática diferida.
+
+---
+
+## 14. Receipt
+
+Receipt no es entidad separada.
+
+Es Change `closed/completed` creado directamente al final.
+
+```yaml
+id: CHG-...
+title: ...
+intent: ...
+lifecycle: closed
+
+close:
+  reason: completed
+  outcome: ...
+  evidence:
+    - method: test
+      result: pass
+      summary: ...
+```
+
+No inventa continuity, planning history ni WorkUnit.
+
+---
+
+# Parte II — Evidence
+
+## 15. Evidence
+
+Evidence soporta una afirmación observable.
+
+Forma embebida:
+
+```yaml
+method: test
+result: pass
+summary: >
+  Feature tests cubren open/closed y persistencia.
+covers: [A1, A2]
+source:
+  command: php artisan test --filter TicketStateTest
+```
+
+### 15.1 Method
+
+Enum:
+
+```text
+test
+build
+lint
+runtime
+inspection
+diff
+external
+other
+```
+
+### 15.2 Result
+
+```text
+pass
+fail
+observed
+```
+
+`pass` soporta checks binarios.
+
+`observed` soporta una observación verificable que no es naturalmente pass/fail.
+
+`fail` puede persistirse como evidencia diagnóstica, pero nunca justifica completion.
+
+### 15.3 Summary
+
+Siempre requerido.
+
+Describe qué fue observado, no solo:
+
+```text
+done
+works
+verified
+```
+
+### 15.4 Coverage
+
+`covers` referencia IDs de acceptance del Change sujeto.
+
+Reglas:
+
+```text
+missing required id -> closure reject
+unknown id          -> closure reject
+duplicate id        -> normalize to one id
+```
+
+### 15.5 Source
+
+Opcional:
+
+```yaml
+source:
+  command: ...
+  reference: ...
+```
+
+---
+
+## 16. Evidence record independiente
+
+Se crea cuando:
+
+- necesita identidad/auditoría;
+- varios criterios la referencian;
+- tiene metadata útil separada;
+- debe sobrevivir más allá del cierre embebido.
+
+Envelope:
+
+```yaml
+kind: evidence
+id: EVD-<ULID>
+subject_id: CHG-...
+payload:
+  method: ...
+  result: ...
+  summary: ...
+  covers: [...]
+  source: ...
+```
+
+Evidence independiente es inmutable.
+
+---
+
+# Parte III — Decision
+
+## 17. Decision
+
+Record independiente:
+
+```yaml
+kind: decision
+id: DEC-<ULID>
+subject_id: CHG-... | optional
+payload:
+  statement: ...
+  rationale: ...
+  supersedes: DEC-... | optional
+```
+
+`statement` y `rationale` son obligatorios.
+
+Decision separada se justifica cuando:
+
+- afecta arquitectura/contrato/seguridad;
+- tiene trade-offs;
+- su historia importa;
+- otro actor debe recuperarla;
+- redescubrirla sería costoso/riesgoso.
+
+No registrar decisiones rutinarias locales.
+
+Decision es inmutable; una nueva Decision puede superseder otra.
+
+---
+
+# Parte IV — Knowledge
+
+## 18. Knowledge
+
+```yaml
+kind: knowledge
+id: KNW-<ULID>
+payload:
+  statement: ...
+  source_refs: optional
+```
+
+Knowledge contiene un hecho reusable.
+
+Ejemplos:
+
+```text
+"El proyecto usa tag_ticket como pivot."
+"En este entorno Playwright falla con EPERM bajo condición X."
 ```
 
 No promover automáticamente:
 
-- error aislado;
 - stdout;
+- error único;
 - workaround descartado;
-- decisión específica sin reutilización.
-
-El repo sigue siendo autoridad de su realidad técnica actual.
-
-Knowledge complementa el repo; no lo duplica.
+- decisión específica sin reuse;
+- contenido que el repo expresa claramente y puede inspeccionarse barato.
 
 ---
 
-## 21. Roadmap y timeline
+## 19. Relations y referencias
 
-No son estado canónico independiente.
-
-### Roadmap
-
-Puede proyectarse de:
+Referencias semánticas iniciales:
 
 ```text
-Changes
-+ lifecycle
-+ relations
-+ metadata opcional futura
+Change -> spawned_from -> Change
+Change -> depends_on   -> Change
+Decision -> supersedes -> Decision
+Evidence -> subject_id -> Change
+Decision -> subject_id -> Change optional
 ```
 
-### Timeline
+No guardar inversos derivados.
 
-Se deriva de timestamps y records durables que realmente existan.
-
-No se mantiene un `roadmap.md` o `timeline.md` paralelo como source of truth.
+No `related_to` genérico en core.
 
 ---
 
-## 22. Independencia de backend y host
+## 20. Concurrencia
 
-El Change payload no contiene conceptos físicos como:
-
-```text
-Engram topic_key
-observation id
-revision_count
-FTS query
-MCP tool name
-SQLite row id
-Codex session id
-```
-
-Ruta correcta:
+Soportado:
 
 ```text
-Host Agent
--> SDD Semantic API
--> Change Model
--> Memory Contract
--> Backend Adapter
--> Backend
+Changes independientes
+handoff secuencial del mismo Change
 ```
 
-El host sigue resolviendo:
+No soportado:
 
-- repo navigation;
-- shell;
-- tests;
-- subagentes;
-- skills;
-- tool invocation.
+```text
+same-Change concurrent writers
+```
+
+Domain Model no contiene locks/version tokens que simulen otra garantía.
 
 ---
 
-## 23. Operaciones de dominio esperadas
-
-La futura Semantic API debe poder expresar al menos:
+## 21. Invariantes falsables
 
 ```text
-openChange(...)
-createReceipt(...)
-getChange(id)
-listOpenChanges(project)
-updateChange(id, semantic change)
-closeChange(id, reason, evidence...)
-relateChange(...)
+D1  ephemeral no crea record obligatorio
+D2  IDs no requieren allocator
+D3  title cambia sin cambiar identity
+D4  Change durable siempre tiene intent
+D5  open continuity siempre tiene actionable next
+D6  closed nunca contiene continuity
+D7  completed exige structured evidence
+D8  explicit acceptance exige exact coverage
+D9  fail evidence no soporta completed
+D10 new intent no entra mediante refine
+D11 spawn crea nueva identity
+D12 dependency no duplica blocks
+D13 Decision independiente es inmutable
+D14 Evidence independiente es inmutable
+D15 Knowledge no duplica repo truth por defecto
+D16 payload no contiene conceptos físicos del backend
+D17 same-Change concurrent mutation no se presenta como safe
 ```
-
-No debe exponer al agente:
-
-```text
-put arbitrary Change JSON
-```
-
-como operación normal.
-
-Preferir operaciones semánticas, por ejemplo:
-
-```text
-setFrontier(...)
-refineAcceptance(...)
-recordConstraint(...)
-addDependency(...)
-closeCompleted(...)
-```
-
-La superficie exacta se decide después del adapter spike.
 
 ---
 
-## 24. Invariantes falsables
-
-### C1 — Ephemeral stays ephemeral
-
-Un cambio trivial puede terminar sin crear Change.
-
-### C2 — Identity without allocator
-
-Dos agentes creando Changes independientes no necesitan consultar/modificar un contador compartido para obtener identidad.
-
-### C3 — Stable identity
-
-Title/slug puede cambiar sin cambiar Change ID.
-
-### C4 — Exact recovery
-
-Con ID conocido, el Change correcto se recupera sin que el LLM elija entre resultados similares.
-
-### C5 — Intent durable
-
-Todo Change tiene intent suficiente para distinguir su objetivo.
-
-### C6 — Actionable continuity
-
-Antes de handoff, `continuity.next` permite reanudar sin reconstruir la conversación.
-
-### C7 — Evidence-backed completion
-
-`closed/completed` no se justifica con texto ceremonial vacío.
-
-### C8 — Acceptance coverage
-
-Si acceptance existe, closure puede explicar qué evidence la soporta.
-
-### C9 — No silent scope drift
-
-Una intención nueva no entra silenciosamente al Change activo.
-
-### C10 — Relation consistency
-
-No se persisten relaciones inversas como dos autoridades.
-
-### C11 — Backend independence
-
-El payload no contiene conceptos propios de Engram.
-
-### C12 — Cache independence
-
-Perder caches/local state no pierde Change durable.
-
-### C13 — Receipt without retroactive ceremony
-
-Receipt no inventa WorkUnit, Progress, SessionSummary o planning history.
-
-### C14 — Cross-process continuity
-
-Un proceso nuevo recupera continuidad desde Memory Contract.
-
-### C15 — Declared concurrency honesty
-
-La primera Alpha no presenta same-Change concurrent mutation como segura.
-
-### C16 — Multiple independent Changes
-
-Varios Changes independientes pueden coexistir y enumerarse sin allocator local.
-
----
-
-## 25. Qué se retira respecto del modelo anterior
-
-Se elimina del modelo activo:
+## 22. Fuera de la primera Alpha
 
 ```text
-CHG-YYYYMMDD-NN
-allocator / high-watermark
-create-if-absent como requisito de identidad
-version token obligatorio
-optimistic concurrency / CAS
-conflict-aware close
-query() como primitive
-append() como primitive
-same-Change multi-writer guarantee
-```
-
-También permanecen fuera del core:
-
-```text
-ChangeBrief separado
-Progress separado
-SessionSummary SDD
-event stream
 WorkUnit
-blocks persistido
-related_to
+Progress record
+SessionSummary
+event stream
+same-Change merge
+CAS
+automatic split transaction
+automatic supersede transaction
+persisted blocks inverse
+generic related_to
+roadmap state
 ```
 
-No se mantienen como secciones deprecated; simplemente dejan de formar parte del modelo vigente.
+Pueden volver solo con evidencia.
 
 ---
 
-## 26. Qué se conserva
+## 23. Gate
 
-Porque sigue alineado con arquitectura y evidencia:
+Este modelo está cerrado para Block B.
 
-- Change separado de conversación;
-- lifecycle `open|closed`;
-- close reason separado;
-- persistencia adaptativa;
-- receipt como Change cerrado;
-- continuity dentro del Change;
-- frontier mínima;
-- contenido adaptativo;
-- scope drift explícito;
-- split/spawn/supersede/dependencies;
-- Decision/Evidence/Knowledge solo cuando aportan;
-- evidence antes de completion;
-- roadmap/export como proyecciones;
-- recovery selectivo;
-- backend independence.
-
-El dogfood previo ya mostró que un Change abierto con frontier fue suficiente para recuperar trabajo en otra sesión y que `session_summary` añadió fricción; esa evidencia sigue siendo una razón fuerte para mantener continuity pequeña. 
-
----
-
-## 27. Preguntas deliberadamente abiertas
-
-No se decide todavía:
-
-- heurística final de qué trabajo merece receipt;
-- si `slug` debe ser generado automáticamente;
-- IDs finales de Decision/Evidence/Knowledge;
-- si WorkUnit volverá a existir;
-- prioridad/roadmap ordering;
-- tamaño recomendado de acceptance;
-- packaging de verification;
-- cuándo habilitar same-Change concurrent writers.
-
-Engram ya no es una pregunta abierta de esta frontier: F5 demostró que el Memory Contract inicial puede implementarse sobre Engram 1.20.0 sin modificar el backend.
-
-Estas preguntas restantes no bloquean Semantic API.
-
----
-
-## 28. Gate de Frontier 3
-
-Change Model queda cerrado porque podemos responder:
-
-1. **¿Cuándo existe Change?**  
-   Receipt o continuity; ephemeral no obliga record.
-
-2. **¿Qué identidad usa?**  
-   `CHG-<ULID>`, sin allocator central.
-
-3. **¿Qué lifecycle tiene?**  
-   `open|closed`.
-
-4. **¿Qué siempre contiene?**  
-   `id`, `title`, `intent`, `lifecycle`.
-
-5. **¿Qué necesita continuity?**  
-   Frontier accionable y solo contexto durable material.
-
-6. **¿Qué necesita completed?**  
-   Outcome + evidence proporcional.
-
-7. **¿Cómo se controla scope drift?**  
-   Refinar mismo Change o crear split/spawn/superseding Change.
-
-8. **¿Qué relaciones son core?**  
-   `split_from`, `spawned_from`, `depends_on`, `supersedes`.
-
-9. **¿Necesita WorkUnit?**  
-   No en la primera Alpha.
-
-10. **¿Qué concurrencia soporta?**  
-    Changes independientes + handoff secuencial; no same-Change concurrent writers.
-
-11. **¿Depende de Engram?**  
-    No.
-
-12. **¿El modelo puede persistirse sobre el backend candidato real?**  
-    Sí; F5 validó `put/get/list`, update secuencial, exact recovery y project isolation sobre Engram 1.20.0.
-
----
-
-## 29. Próxima frontier
-
-```text
-F6 — Semantic API
-```
-
-La siguiente pregunta ya no es cómo guardar un Change sino:
-
-> ¿qué operaciones semánticas mínimas debe exponer SDD para que el agente use este modelo correctamente sin construir lifecycle/persistence/closure manualmente en cada request?
-
-No crear todavía runtime, CLI o skills hasta cerrar esa superficie.
+Una implementación que necesite ampliar este schema durante Block B debe primero demostrar que
+una garantía congelada no puede implementarse sin esa ampliación.

@@ -1,761 +1,542 @@
-# SDD V2 — Semantic API
+# SDD V2 — Application API
 
-## 1. Estado y propósito
+## 1. Propósito
 
-**Estado:** contrato de diseño de F6; todavía no es implementación productiva.
+Este documento define la frontera programática de casos de uso de SDD.
 
-La Semantic API es la capa que evita que el agente implemente manualmente, request por request:
+**Application API no significa REST.**
 
-- lifecycle de Change;
-- generación de identidad;
-- persistencia;
-- continuity/frontier;
-- reglas mínimas de closure;
-- aislamiento de proyecto.
-
-Arquitectura:
+Es una API semántica transport-free entre el host y el Domain Model:
 
 ```text
-Host Agent / Harness
-        |
-        v
-SDD Semantic API
-        |
-        v
-SDD Domain Model
-        |
-        v
-Memory Contract
-        |
-        v
-Backend Adapter
+Host
+  -> Application API
+  -> Domain Model
+  -> Memory Port
 ```
 
-La Semantic API **no reemplaza al agente** para decisiones semánticas que requieren comprensión del cambio.
+Library, MCP, CLI y un eventual HTTP API son exposiciones por encima.
 
-Su responsabilidad es más limitada:
+La API existe para evitar que el LLM implemente manualmente:
 
-> hacer deterministas las invariantes mecánicas de SDD y ofrecer operaciones de dominio pequeñas, evitando que el LLM manipule records canónicos arbitrariamente.
+- record envelopes;
+- IDs;
+- lifecycle;
+- contract mutation;
+- evidence/acceptance coverage;
+- scope relations;
+- project isolation;
+- Memory error translation.
 
 ---
 
-## 2. Qué problema resuelve
+## 2. No es
 
-Sin esta capa, el agente tendría que hacer algo equivalente a:
+No es:
 
-```text
-decidir ID
--> construir JSON Change
--> recordar lifecycle válido
--> decidir cómo actualizar continuity
--> impedir cierre sin evidence
--> llamar Memory Contract
--> interpretar errores
--> evitar cambiar project_id/kind/id
--> recordar qué campos borrar al cerrar
-```
-
-Eso recrearía el problema ya observado en Alpha.5:
-
-> la semántica existe en documentación, pero el LLM actúa como implementation layer.
-
-La API debe convertir ese flujo en operaciones como:
-
-```text
-openChange(...)
-updateChange(...)
-closeChange(...)
-```
-
-donde las reglas mecánicas viven en código.
-
----
-
-## 3. Qué NO resuelve
-
-La Semantic API no debe convertirse en:
-
-- router general de requests;
-- phase engine;
+- router de requests;
 - planner;
+- phase engine;
 - task manager;
-- workflow DSL;
-- spec generator;
-- shell/test runner;
+- shell runner;
 - repo navigator;
 - subagent coordinator;
-- memory search engine;
-- replacement de Codex/OpenCode/etc.
+- memory backend;
+- REST por definición.
 
-Especialmente, no existe:
+No existe:
 
 ```text
-beginRequest()
-plan()
-design()
-createTasks()
-implement()
-verifyPhase()
+beginRequest
+plan
+design
+createTasks
+verifyPhase
 ```
 
-como pipeline obligatorio.
-
-El host sigue resolviendo HOW, herramientas y ejecución.
+como pipeline SDD obligatorio.
 
 ---
 
-## 4. Regla principal: no existe una operación `ephemeral`
-
-`ephemeral` significa precisamente que SDD no necesita crear estado durable.
-
-Por tanto, la API **no** debe ofrecer:
-
-```text
-startEphemeralChange()
-recordEphemeral()
-```
-
-ni exigir una llamada SDD por cada request.
-
-La ausencia de una operación durable es válida.
-
-Esto mantiene:
-
-```text
-trabajo trivial
--> host actúa
--> verifica proporcionalmente
--> termina
-```
-
-sin ceremony SDD.
-
-La Semantic API entra cuando el agente necesita:
-
-```text
-receipt
-o
-continuity
-o
-recovery de estado durable existente
-```
-
----
-
-## 5. Binding por proyecto
-
-La API se instancia ligada a un único `project_id`.
+## 3. Binding
 
 Forma conceptual:
 
 ```javascript
-const sdd = createSemanticApi({
+const sdd = createApplicationApi({
   projectId,
   memory,
   idFactory,
 });
 ```
 
-Las operaciones normales no reciben `project_id` repetidamente:
+`projectId` queda ligado a la instancia.
 
-```text
-sdd.openChange(...)
-sdd.getChange(id)
-sdd.listOpenChanges(...)
-```
-
-### Motivo
-
-Esto evita una clase completa de errores:
-
-```text
-agente construye record para proyecto A
--> accidentalmente persiste/consulta proyecto B
-```
-
-El binding pertenece a configuración/wiring.
-
-El `project_id` lógico sigue siendo parte del record durable, pero no es un parámetro libre en cada mutation.
+Commands normales no reciben project arbitrario.
 
 ---
 
-## 6. Superficie mínima de la primera Alpha
+## 4. Persistencia adaptativa
 
-La superficie propuesta es deliberadamente pequeña:
+No existe command `ephemeral`.
+
+### Ephemeral
+
+```text
+0 Application API durable commands
+```
+
+### Receipt
+
+```text
+createReceipt(...)
+```
+
+### Continuity
+
+```text
+openChange(...)
+setFrontier(...)
+getChange(...)
+closeChange(...)
+```
+
+No se llama a SDD después de cada tool call.
+
+---
+
+## 5. Superficie productiva inicial
+
+### Queries
+
+```text
+getChange(id)
+listOpenChanges(options?)
+
+getDecision(id)
+getEvidence(id)
+
+searchKnowledge(query)   # capability opcional
+```
+
+### Change commands
 
 ```text
 openChange(input)
 createReceipt(input)
-
-getChange(id)
-listOpenChanges(options?)
-
-updateChange(id, mutations)
-
+refineChange(id, refinement)
+setFrontier(id, frontier)
+spawnChange(originId, input)
+addDependency(id, targetId)
 closeChange(id, input)
 ```
 
-Seis operaciones.
-
-No se agrega una operación hasta que exista un caso de dominio que no pueda expresarse correctamente con éstas.
-
-### No incluido todavía
+### Related records
 
 ```text
-recordDecision()
-recordKnowledge()
-recordEvidence()
-relateChange()
-addDependency()
-supersedeChange()
-splitChange()
-coordinateAgents()
+recordDecision(input)
+recordEvidence(input)
+promoteKnowledge(input)
 ```
 
-Decision, Knowledge y Evidence siguen siendo conceptos válidos del Domain Model.
-
-Pero no necesitan API dedicada para validar el primer slice de Change continuity/receipt.
-
-Evidence pequeña puede vivir embebida en closure, como ya permite Change Model.
+No se expone `put(record)` al agente como operación de dominio.
 
 ---
 
-## 7. `openChange(input)`
+# Parte I — Cross-cutting rules
 
-Crea un Change `open` para continuity.
+## 6. Validate before side effects
 
-Entrada conceptual:
+Para toda creación:
+
+```text
+validate input
+-> validate semantic references/preconditions
+-> allocate id
+-> collision preflight
+-> memory.put
+-> confirm according to Memory Contract
+```
+
+Input inválido:
+
+```text
+0 IDs consumidos
+0 writes
+```
+
+---
+
+## 7. ID generation
+
+Prefixes:
+
+```text
+CHG
+DEC
+EVD
+KNW
+```
+
+Collision preflight:
+
+```text
+candidate
+-> memory.get(exact)
+-> not_found: create
+-> exists: regenerate
+-> ambiguous/unavailable/error: propagate
+```
+
+No retry infinito; implementación define un bound pequeño y falla explícitamente al agotarlo.
+
+---
+
+## 8. Error model
+
+Public codes:
+
+```text
+not_found
+invalid_input
+invalid_state
+closure_rejected
+relation_invalid
+
+memory_unavailable
+memory_ambiguous
+memory_unsupported
+memory_error
+```
+
+No filtrar:
+
+```text
+curl exit code
+Engram HTTP path
+SQLite id
+topic_key
+```
+
+como semántica pública.
+
+Diagnostic cause puede conservarlos internamente.
+
+---
+
+## 9. Strict schemas
+
+Todo key aceptado tiene schema.
+
+Unknown field:
+
+```text
+invalid_input
+```
+
+No existe pass-through de objetos arbitrarios hacia payload.
+
+---
+
+## 10. Persisted-record validation
+
+Un record recuperado se valida contra:
+
+```text
+envelope
+kind
+project
+id
+payload schema
+domain invariants
+```
+
+Si el backend devuelve un record físicamente encontrado pero lógicamente inválido:
+
+```text
+memory_error
+```
+
+No se confunde con `invalid_input` del caller.
+
+---
+
+# Parte II — Change Queries
+
+## 11. `getChange(id)`
+
+```text
+validate CHG id
+-> memory.get({project, kind=change, id})
+-> validate persisted Change
+-> return domain Change
+```
+
+No fuzzy selection.
+
+---
+
+## 12. `listOpenChanges(options?)`
+
+```text
+memory.list({project, kind=change, bounded options})
+-> validate items
+-> filter lifecycle=open
+-> preserve complete flag
+```
+
+Resultado:
 
 ```yaml
-title: Estado del ticket desde detalle
-
-intent: >
-  Permitir cambiar un ticket entre open y closed desde su detalle,
-  sin introducir estados nuevos.
-
-contract:
-  scope:
-    out:
-      - agregar estados adicionales
-  acceptance:
-    - id: A1
-      condition: solo open/closed son válidos
-
-continuity:
-  next: >
-    Inspeccionar el flujo actual de actualización de estado y
-    localizar el slice mínimo para exponerlo desde detalle.
-
-  completed: []
-  blockers: []
+items: [...]
+complete: true | false
+next_cursor: optional
 ```
 
-### 7.1 Invariantes impuestas por código
-
-`openChange` debe:
-
-1. generar `CHG-<ULID>`;
-2. establecer `lifecycle=open`;
-3. impedir que caller suministre otro ID;
-4. impedir que caller suministre `project_id`, `kind` o lifecycle;
-5. requerir `title` no vacío;
-6. requerir `intent` no vacío;
-7. requerir `continuity.next` no vacío;
-8. normalizar listas vacías sin inventar secciones;
-9. rechazar `relations` en el slice inicial;
-10. persistir mediante un único `memory.put`;
-11. devolver solo después de confirmación durable.
-
-### 7.2 Por qué `next` es obligatorio
-
-Un Change abierto existe para preservar continuidad.
-
-Permitir:
-
-```text
-open Change
-+ no frontier
-```
-
-volvería a crear state durable que no sabe cómo reanudarse.
-
-La frontier puede ser pequeña:
-
-```text
-"Inspeccionar el endpoint actual y elegir el slice ejecutable."
-```
-
-No necesita ser un plan.
-
-### 7.3 Qué NO hace
-
-`openChange` no:
-
-- inspecciona el repo;
-- decide si el request era realmente continuity;
-- genera acceptance artificial;
-- inventa scope;
-- decide HOW;
-- crea WorkUnits.
-
-La decisión `ephemeral | receipt | continuity` sigue siendo una decisión semántica del agente/host.
+Si Memory dice `complete=false`, Application API nunca afirma exhaustividad.
 
 ---
 
-## 8. `createReceipt(input)`
+# Parte III — Change Commands
 
-Crea directamente un Change `closed/completed`.
-
-No hace:
-
-```text
-open
--> update
--> close
-```
-
-porque eso inventaría lifecycle que nunca existió.
-
-Entrada conceptual:
-
-```yaml
-title: Corregir validación de estado
-
-intent: Rechazar cualquier estado distinto de open/closed.
-
-outcome: La validación rechaza pending y preserva open/closed.
-
-evidence:
-  summary: >
-    Test dirigido cubre open, closed y pending; todos los casos
-    producen el resultado esperado.
-  covers:
-    - A1
-
-contract:
-  acceptance:
-    - id: A1
-      condition: pending es rechazado
-```
-
-### 8.1 Invariantes
-
-Debe:
-
-1. generar ID;
-2. construir `lifecycle=closed`;
-3. usar `close.reason=completed`;
-4. requerir `outcome` no vacío;
-5. requerir evidence no vacía;
-6. si existe acceptance explícita, exigir coverage completo mediante `evidence.covers`;
-7. no crear `continuity`;
-8. persistir en un único `put`;
-9. confirmar antes de devolver.
-
-### 8.2 Evidence mínima
-
-Para la primera Alpha, la API no necesita diseñar todavía un Evidence Model nuevo.
-
-Acepta la forma embebida del Change Model:
-
-```yaml
-evidence:
-  summary: non-empty
-  covers: optional acceptance ids
-  refs: optional
-```
-
-La API puede validar estructura y presencia.
-
-No puede verificar por sí sola que el test realmente ocurrió.
-
-La observación real sigue proviniendo del host:
-
-```text
-shell/test/readback/browser/etc.
-```
-
-La API hace determinista:
-
-```text
-completed requiere evidence
-```
-
-no:
-
-```text
-evidence es verdadera porque llegó como string
-```
-
-La calidad factual se prueba en el slice de integración/host más adelante.
-
----
-
-## 9. `getChange(id)`
-
-Recupera un Change conocido mediante Memory Contract.
-
-Flujo:
-
-```text
-validate Change ID
--> memory.get(project + kind=change + id)
--> validate record shape
--> return Change
-```
-
-### Invariantes
-
-No:
-
-```text
-semantic search
--> elegir el que parece correcto
-```
-
-La exactitud ya fue validada en F5.
-
-### Recovery fast-path
-
-Cuando el Change recuperado contiene:
-
-```text
-intent
-+ contract material
-+ continuity.next ejecutable
-```
-
-la API no debe producir planning adicional.
-
-Devuelve el estado.
-
-El host hace:
-
-```text
-inspección dirigida
--> ACT
-```
-
----
-
-## 10. `listOpenChanges(options?)`
-
-Enumera Changes abiertos del proyecto ligado.
-
-Flujo:
-
-```text
-memory.list(project, kind=change)
--> validar cada Change
--> lifecycle == open
--> devolver items + complete
-```
-
-Resultado conceptual:
-
-```yaml
-items:
-  - CHG-...
-  - CHG-...
-complete: true
-```
-
-### Invariante importante
-
-Si Memory Contract devuelve:
-
-```text
-complete=false
-```
-
-la Semantic API conserva:
-
-```text
-complete=false
-```
-
-No convierte un resultado parcial en "todos los Changes abiertos".
-
-### No decide automáticamente cuál continuar
-
-Si hay varios Changes abiertos:
-
-```text
-listOpenChanges()
-```
-
-no elige uno por similitud.
-
-La selección puede depender de:
-
-- ID conocido;
-- instrucción del usuario;
-- contexto explícito del host.
-
----
-
-## 11. `updateChange(id, mutations)`
-
-Esta es la única mutation genérica del core, pero **no es JSON Patch** ni `put arbitrary JSON`.
-
-Forma:
-
-```javascript
-updateChange(id, [
-  { type: "refine", ... },
-  { type: "set_frontier", ... },
-])
-```
-
-La API:
-
-```text
-get exact
--> comprobar lifecycle=open
--> aplicar mutations conocidas
--> validar Change final
--> un único put
-```
-
-Esto permite agrupar varias modificaciones semánticas en un write sin ampliar la superficie pública con decenas de métodos.
-
----
-
-## 12. Mutation `refine`
-
-Sirve para clarificaciones dentro de la **misma intención**.
-
-Ejemplo:
-
-```yaml
-type: refine
-
-title: optional-new-title
-intent: optional-refined-intent
-
-contract:
-  optional updated contract
-```
-
-### Permitido
-
-- mejorar wording;
-- precisar acceptance;
-- agregar constraint material;
-- reducir scope;
-- registrar edge case coherente.
-
-### No permitido conceptualmente
-
-Usar `refine` para convertir:
-
-```text
-"cambiar estado de ticket"
-```
-
-en:
-
-```text
-"crear sistema completo de permisos"
-```
-
-Eso es scope drift.
-
-### Límite de enforcement
-
-La API puede impedir cambios estructurales ilegales.
-
-No puede determinar con certeza si dos textos representan la misma intención.
-
-Esa decisión sigue siendo semántica del agente.
-
-La regla correcta es:
-
-```text
-si cambia la intención material
--> no refine
--> nuevo Change / spawn / supersede
-```
-
-No se intenta resolver comprensión semántica mediante heurísticas ocultas.
-
----
-
-## 13. Mutation `set_frontier`
-
-Actualiza continuity para handoff/recovery.
+## 13. `openChange(input)`
 
 Entrada:
 
 ```yaml
-type: set_frontier
+title: ...
+intent: ...
 
-completed:
-  - endpoint PATCH implementado
-  - test de dominio pasa
-
-next: >
-  Agregar el control open/closed en la vista de detalle usando
-  el endpoint ya validado.
-
-blockers: []
+contract: optional
+continuity:
+  completed: optional
+  next: required
+  blockers: optional
 ```
 
-### Invariantes
+Caller no puede suministrar:
 
-Debe:
+```text
+id
+project_id
+kind
+lifecycle
+relations
+close
+```
 
-1. funcionar solo sobre Change `open`;
-2. exigir `next` no vacío;
-3. reemplazar la frontier vigente, no acumular history;
-4. mantener `completed` como resumen compacto;
-5. normalizar blockers;
-6. persistir un único snapshot vigente.
+Flujo:
 
-No crea:
+```text
+validate
+-> build open payload
+-> generate/collision-check ID
+-> put
+-> return Change
+```
 
-- Progress record;
-- session summary;
-- event stream.
+`continuity.next` obligatorio.
 
 ---
 
-## 14. Relaciones: diferidas del slice inicial
+## 14. `createReceipt(input)`
 
-El Change Model conserva relaciones válidas como:
+Entrada:
 
-```text
-split_from
-spawned_from
-depends_on
-supersedes
+```yaml
+title: ...
+intent: ...
+contract: optional
+outcome: ...
+
+evidence:
+  - method: test
+    result: pass
+    summary: ...
+    covers: [A1]
+    source: optional
+
+evidence_refs: optional
 ```
 
-pero F6A no expone todavía mutations de relaciones.
+Reglas:
 
-Motivos:
+- outcome requerido;
+- al menos una evidence embebida o ref válida;
+- explicit acceptance exige coverage exacto;
+- unknown coverage rechazado;
+- `result=fail` no soporta completion;
+- no crea continuity;
+- un único Change nace `closed/completed`.
 
-- `supersedes` requiere coordinar al menos dos Changes;
-- `split_from` forma parte de una operación de split aún no diseñada;
-- `depends_on` no fue necesario para validar continuity/receipt en el dogfood previo;
-- agregar relaciones ahora ampliaría el primer slice sin evidencia de que sean necesarias para probar la Semantic API.
-
-Por tanto no existe todavía:
+Si usa `evidence_refs`, Application API hace exact get y valida:
 
 ```text
-add_dependency
-relateChange
-supersedeChange
-splitChange
+kind=evidence
+subject_id coherente
+result != fail
+coverage válida
 ```
-
-Si el siguiente dogfood demuestra que una dependencia durable cambia una frontier real, se diseña y prueba esa operación explícitamente.
-
-Esto no elimina las relaciones del Domain Model; solo evita promocionarlas prematuramente a la primera API ejecutable.
 
 ---
 
-## 15. `closeChange(id, input)`
+## 15. `refineChange(id, refinement)`
 
-La primera superficie implementable debe soportar:
+Solo Change `open`.
 
-```text
-completed
-cancelled
+Entrada conceptual:
+
+```yaml
+title: optional
+intent: optional
+
+contract_patch:
+  scope: value | null | omitted
+  acceptance: value | null | omitted
+  constraints: value | null | omitted
+  risks: value | null | omitted
+  edge_cases: value | null | omitted
+  open_questions: value | null | omitted
+  rollback: value | null | omitted
 ```
 
-Los reasons:
+Semántica:
 
 ```text
-superseded
-split
+omitted -> preserve
+value   -> replace only that validated section
+null    -> remove that optional section
+[]      -> normalize to absent
 ```
 
-siguen perteneciendo al Change Model, pero se difieren hasta definir una operación multi-Change que no deje relaciones parciales o contradictorias.
+No reemplaza contract completo.
 
-Esto evita implementar prematuramente coordinación de dos o más records.
+No puede mutar:
+
+```text
+id
+lifecycle
+continuity
+relations
+close
+```
+
+La API no puede determinar por texto si el nuevo intent cambió materialmente el objetivo.
+Ese juicio sigue siendo del agente; runtime indica que un cambio material usa `spawnChange`
+o un nuevo Change.
 
 ---
 
-## 16. `closeChange(... completed ...)`
+## 16. `setFrontier(id, frontier)`
+
+Solo Change `open`.
+
+```yaml
+completed: optional []
+next: required
+blockers: optional []
+```
+
+Reemplaza el snapshot de continuity.
+
+No acumula history.
+
+No crea Progress/Event records.
+
+---
+
+## 17. `spawnChange(originId, input)`
+
+Nueva intención descubierta durante un Change existente.
+
+Precondiciones:
+
+```text
+origin existe
+input válido como openChange
+```
+
+Crea:
+
+```yaml
+newChange:
+  lifecycle: open
+  relations:
+    spawned_from: originId
+```
+
+No muta origin.
+
+Esto hace la operación segura con un único write canónico del child.
+
+---
+
+## 18. `addDependency(id, targetId)`
+
+Precondiciones:
+
+- source existe y está open;
+- target existe;
+- source != target;
+- dependency no duplicada.
+
+Efecto:
+
+```text
+source.relations.depends_on += target
+```
+
+No escribe:
+
+```text
+target.blocks += source
+```
+
+`blocks` es derivable.
+
+---
+
+## 19. `closeChange(id, { reason: completed, ... })`
 
 Entrada:
 
 ```yaml
 reason: completed
+outcome: ...
 
-outcome: >
-  El estado puede cambiarse desde detalle y persiste.
-
-evidence:
-  summary: >
-    Tests dirigidos cubren open/closed y persistencia.
-  covers:
-    - A1
-    - A2
-  refs: optional
-
+evidence: optional [...]
+evidence_refs: optional [...]
 ```
 
-### Invariantes mecánicas
+Precondiciones:
 
-La API debe rechazar completion si:
+- Change open;
+- outcome no vacío;
+- no blockers activos;
+- existe support evidence;
+- every embedded evidence schema válido;
+- every referenced Evidence existe y corresponde al Change;
+- ninguna evidence usada tiene `result=fail`;
+- union de `covers` satisface todos los acceptance IDs;
+- union de `covers` no contiene IDs desconocidos.
 
-- Change ya está closed;
-- `outcome` está vacío;
-- evidence está vacía;
-- existen blockers en continuity;
-- acceptance explícita existe pero caller no declara cobertura suficiente;
-- el Change final no puede persistirse.
-
-### Acceptance coverage
-
-Si el Change contiene:
-
-```yaml
-acceptance:
-  - id: A1
-  - id: A2
-```
-
-el close input debe poder declarar la cobertura dentro de la propia evidence:
-
-```yaml
-evidence:
-  summary: Tests dirigidos cubren la aceptación.
-  covers:
-    - A1
-    - A2
-```
-
-La API verifica que todos los IDs requeridos estén presentes en `evidence.covers`.
-
-Esto **no prueba** que el test sea verdadero.
-
-Sí impide un bug mecánico:
-
-```text
-hay acceptance explícita
--> caller cierra sin siquiera identificar qué evidence la cubre
-```
-
-### Efecto de closure
-
-Al cerrar completed:
+Efecto:
 
 ```text
 lifecycle = closed
 close.reason = completed
 close.outcome = ...
-close.evidence = ...
-continuity = removed
+close.evidence = normalized embedded evidence
+close.evidence_refs = refs if present
+delete continuity
+put
 ```
 
-No queda `next` stale en un Change cerrado.
+No hay CAS porque same-Change multiwriter no está soportado.
 
 ---
 
-## 17. `closeChange(... cancelled ...)`
+## 20. `closeChange(id, { reason: cancelled })`
 
 Entrada:
 
@@ -764,442 +545,249 @@ reason: cancelled
 rationale: optional
 ```
 
-Reglas:
+No exige evidence de cumplimiento.
 
-- no requiere evidence de cumplimiento;
-- elimina continuity;
-- deja `lifecycle=closed`;
-- no inventa outcome completed.
+Efecto:
+
+```text
+closed/cancelled
+continuity removed
+```
 
 ---
 
-## 18. Supersede y split: deliberadamente fuera del primer slice
+## 21. Split y supersede
 
-El Domain Model ya reconoce:
+No hay commands automáticos iniciales.
 
-```text
-superseded
-split
-```
+No se implementan como dos `put` ingenuos.
 
-Pero implementarlos correctamente implica varios records.
-
-Ejemplo supersede:
+Cuando exista necesidad:
 
 ```text
-crear nuevo Change
--> new.supersedes = old
--> cerrar old como superseded
+operation design
+-> partial failure semantics
+-> conformance test
+-> implementation
 ```
-
-Sin transacción multi-record pueden ocurrir fallos parciales.
-
-No es correcto esconder eso detrás de:
-
-```text
-closeChange(old, superseded)
-```
-
-y fingir que el relation graph quedó consistente.
-
-Por tanto F6 inicial **no implementa todavía** esas dos operations.
-
-Cuando exista necesidad real, se diseña una operación compuesta con failure/recovery explícitos.
 
 ---
 
-## 19. Errores de dominio
+# Parte IV — Decision
 
-La API no debe filtrar detalles físicos de Engram.
+## 22. `recordDecision(input)`
 
-Errores conceptuales mínimos:
+```yaml
+subject_id: optional CHG
+statement: required
+rationale: required
+supersedes: optional DEC
+```
+
+Precondiciones:
+
+- subject Change existe si se suministra;
+- superseded Decision existe si se suministra.
+
+Crea Decision nueva inmutable.
+
+Retry idéntico puede reconciliarse; no hay arbitrary update.
+
+---
+
+## 23. `getDecision(id)`
+
+Exact get + schema validation.
+
+No search semántico para recuperar una Decision conocida.
+
+---
+
+# Parte V — Evidence
+
+## 24. `recordEvidence(input)`
+
+```yaml
+subject_id: CHG-...
+method: ...
+result: ...
+summary: ...
+covers: optional [...]
+source: optional
+```
+
+Precondiciones:
+
+- Change existe;
+- covers solo contiene IDs existentes del Change.
+
+Crea Evidence inmutable.
+
+Evidence `fail` puede registrarse; simplemente no soporta completed.
+
+---
+
+## 25. `getEvidence(id)`
+
+Exact get + schema validation.
+
+---
+
+# Parte VI — Knowledge
+
+## 26. `promoteKnowledge(input)`
+
+```yaml
+statement: required
+source_refs: optional
+```
+
+Crea Knowledge reusable.
+
+No intenta decidir automáticamente si un hecho merece promotion; esa es una decisión
+semántica del agente/host.
+
+---
+
+## 27. `searchKnowledge(query)`
+
+Discovery opcional.
+
+Puede apoyarse en `memory.search` cuando el backend lo soporte.
+
+No tiene semántica de exact recovery.
+
+Search ranking puede ayudar a descubrir Knowledge porque el caller está explícitamente
+buscando contexto, no una identidad canónica conocida.
+
+Si `memory.search` no existe:
 
 ```text
-change_not_found
-invalid_change
-change_closed
-closure_rejected
-dependency_invalid
-
-memory_unavailable
-memory_ambiguous
 memory_unsupported
-memory_error
 ```
 
-Ejemplo:
-
-```text
-Engram HTTP 503
--> Memory Contract unavailable
--> Semantic API memory_unavailable
-```
-
-No:
-
-```text
-caller recibe "curl exited 7"
-```
-
-Los detalles backend pueden conservarse como `cause` diagnóstica, no como semántica pública.
+No crear side index silencioso.
 
 ---
 
-## 20. Qué vive en lógica pura
+# Parte VII — Ports y transport
 
-Antes de escribir un adapter productivo, la mayor parte del comportamiento puede probarse sin backend:
+## 28. Memory Port dependency
 
-```text
-generateChangeId
-buildOpenChange
-buildReceipt
-validateChange
-applyMutation
-closeCompleted
-closeCancelled
-validateAcceptanceCoverage
-```
-
-Estas funciones:
-
-- no conocen Engram;
-- no conocen HTTP;
-- no conocen Docker;
-- no leen el repo;
-- no ejecutan tests.
-
-La capa effectful queda pequeña:
+Application API solo conoce:
 
 ```text
+put
 get
 list
-put
+search? optional
 ```
 
-a través del Memory Contract.
+No conoce Engram.
 
 ---
 
-## 21. Forma conceptual
+## 29. Library exposure
 
-```text
-SemanticApi
-|
-+-- project binding
-+-- idFactory
-+-- MemoryPort
-|
-+-- openChange
-|     -> buildOpenChange
-|     -> validate
-|     -> memory.put
-|
-+-- createReceipt
-|     -> buildReceipt
-|     -> validate
-|     -> memory.put
-|
-+-- getChange
-|     -> memory.get
-|     -> validate
-|
-+-- listOpenChanges
-|     -> memory.list
-|     -> validate/filter
-|
-+-- updateChange
-|     -> getChange
-|     -> apply mutations
-|     -> validate
-|     -> memory.put
-|
-+-- closeChange
-      -> getChange
-      -> closeCompleted/cancelled
-      -> validate
-      -> memory.put
-```
+La implementación Node exporta factory/services para composición interna.
 
-No hay state store adicional.
+Library es referencia canónica para tests y transports.
 
 ---
 
-## 22. Atomicidad dentro del modelo soportado
+## 30. MCP transport
 
-Para la primera Alpha:
+Primer transport objetivo.
 
-```text
-una Semantic API operation
--> un writer sobre ese Change
-```
-
-`updateChange` y `closeChange` usan:
+Cada tool:
 
 ```text
-get
--> pure transformation
--> put
+validate transport schema
+-> call one Application use case
+-> map result/error structurally
 ```
 
-No prometen protección contra otro writer simultáneo sobre el mismo Change.
+No replica lógica de dominio.
 
-Eso coincide con Memory Contract.
+La lista de tools refleja commands/queries realmente implementados.
 
-No se agrega version/CAS por debajo para simular una garantía que el producto no declara.
+No existe tool genérica:
+
+```text
+sdd_put_record
+```
 
 ---
 
-## 23. API y persistencia adaptativa
+## 31. CLI
 
-La clasificación no debe convertirse en un router burocrático.
+Puede envolver Application API para debug/admin.
 
-Flujo esperado:
+Structured output y exit codes estables.
 
-### Trabajo trivial
-
-```text
-request
--> ACT
--> verify
--> fin
-
-Semantic API calls: 0
-```
-
-### Trabajo material terminado en la sesión
-
-```text
-request
--> ACT
--> verify
--> createReceipt
-
-Semantic API calls durables: 1
-```
-
-### Trabajo que necesita continuity
-
-```text
-request
--> entender suficiente para frontier
--> openChange
--> ACT
--> updateChange(set_frontier) cuando haga falta handoff
--> otra sesión: getChange
--> ACT
--> closeChange(completed)
-```
-
-No existe obligación de actualizar Change después de cada paso.
+No contiene segunda implementación de reglas.
 
 ---
 
-## 24. Progressive disclosure
+## 32. HTTP/REST
 
-La API tampoco debe obligar al agente a cargar el modelo completo.
+No forma parte de Block B mínimo.
 
-Para una operación concreta, el caller necesita solo su schema.
-
-Ejemplos:
-
-```text
-closeCompleted
--> necesita closure invariants
--> no necesita documentación de split/spawn
-
-set_frontier
--> necesita continuity shape
--> no necesita Evidence Model completo
-```
-
-Esto será relevante en F7/F8 para decidir qué reglas deben proyectarse al host y cuáles pueden descubrirse on-demand.
-
-No se crean skills todavía.
+Si se agrega después, debe ser transport real y no cambia Application API.
 
 ---
 
-## 25. Qué NO debe exponer el primer producto
+# Parte VIII — Testing contract
+
+## 33. Baseline F6B
+
+Los 22 casos del spike son baseline, no implementación.
+
+Conservar al menos:
 
 ```text
-putRecord(json)
-patchRecord(path, value)
-setLifecycle("closed")
-setProject(...)
-setKind(...)
-setChangeId(...)
-writeRawEvidence(...)
-writeEngramTopicKey(...)
+ephemeral zero writes
+frontier required
+reserved fields rejected
+exact recovery
+refine preserves identity
+closed mutation rejected
+outcome/evidence required
+blockers reject completed
+closure removes continuity
+receipt direct closed
+complete=false preserved
+memory unavailable propagates
 ```
 
-Esas operations permiten saltarse el Domain Model.
+Agregar:
 
-El Memory Contract existe debajo de la Semantic API, no como tool normal del agente para manipular Changes.
+```text
+strict risk/rollback/open_questions schemas
+validate before ID
+collision retry
+contract patch preserves omitted fields
+contract null removes explicit field
+unknown acceptance coverage reject
+structured evidence required
+fail evidence cannot close
+evidence ref subject validation
+spawn relation
+dependency validation
+Decision immutability
+Evidence immutability
+Knowledge search unsupported behavior
+persisted-record corruption mapping
+```
 
 ---
 
-## 26. Primer slice falsable
+## 34. Gate
 
-Después de aprobar este contrato, la implementación inicial no debe cubrir toda F6.
+Block B no se considera completo mientras una capability documentada solo exista como
+instrucción al LLM.
 
-Debe probar únicamente:
+Debe existir código + test para todo command/query prometido al Runtime Projection/MCP.
 
-```text
-openChange
-getChange
-updateChange(refine / set_frontier)
-closeChange(completed / cancelled)
-createReceipt
-listOpenChanges
-```
-
-con un `MemoryPort` in-memory.
-
-### Casos que deben romperse deliberadamente
-
-1. ephemeral no genera ninguna escritura;
-2. open sin frontier -> reject;
-3. caller intenta suministrar ID/lifecycle/project/kind -> reject;
-4. open con `relations` -> reject en el slice inicial;
-5. recovery exacto devuelve frontier actual;
-6. `refine` preserva id/project/kind/lifecycle;
-7. `refine` con campos reservados -> reject;
-8. set_frontier sobre closed -> reject;
-9. close completed sin outcome -> reject;
-10. close completed sin evidence -> reject;
-11. acceptance parcial -> reject;
-12. close completed con blocker -> reject;
-13. closure elimina continuity;
-14. close cancelled no inventa outcome/evidence;
-15. receipt se crea cerrado directamente;
-16. receipt no inventa continuity;
-17. receipt con acceptance y coverage parcial -> reject;
-18. listOpenChanges no incluye closed;
-19. `complete=false` del MemoryPort se preserva;
-20. memory unavailable no se transforma en success.
-
-No Engram todavía.
-
-F5 ya validó el Memory Contract ↔ Engram boundary.
-
-F6 debe aislar primero la semántica.
-
----
-
-## 27. Criterio de promoción
-
-El slice puede pasar de `experiments/` a producto solo si demuestra:
-
-- menos semántica manual para el agente;
-- no introduce otro source of truth;
-- no exige llamada para ephemeral;
-- closure mecánicamente segura;
-- recovery/action frontier simple;
-- API pequeña;
-- lógica pura mayoritaria;
-- backend totalmente detrás de MemoryPort;
-- tests orientados a invariantes;
-- ningún componente depende de Engram directamente.
-
-Si para implementar estas seis operations aparece necesidad de:
-
-```text
-router
-WorkUnit
-state.json
-phase graph
-skill catalog
-migration
-```
-
-la implementación está ampliando la frontier incorrectamente.
-
----
-
-## 28. Decisiones diferidas
-
-Fuera de F6 inicial:
-
-- API dedicada de Decision;
-- API dedicada de Evidence separado;
-- Knowledge promotion;
-- relations / `add_dependency`;
-- supersede multi-record;
-- split multi-record;
-- same-Change multi-writer;
-- CAS;
-- transport final del adapter;
-- CLI;
-- MCP SDD;
-- host adapters;
-- runtime projection;
-- skills;
-- packaging;
-- migration;
-- exporters.
-
-No se agregan como placeholders.
-
----
-
-## 29. Gate de F6A
-
-Este contrato queda aprobado cuando podemos responder:
-
-1. **¿El trabajo ephemeral requiere SDD API?**  
-   No.
-
-2. **¿Cómo se crea continuity?**  
-   `openChange`, con frontier requerida.
-
-3. **¿Cómo se crea receipt?**  
-   `createReceipt`, cerrado directamente.
-
-4. **¿Cómo se recupera un Change conocido?**  
-   `getChange`.
-
-5. **¿Cómo se actualiza sin arbitrary JSON patch?**  
-   `updateChange` con mutations semánticas conocidas: inicialmente `refine` y `set_frontier`.
-
-6. **¿Cómo se cierra completed?**  
-   `closeChange` con outcome + evidence + acceptance coverage + cero blockers.
-
-7. **¿Qué persiste la API?**  
-   Solo vía Memory Contract.
-
-8. **¿Dónde vive project identity?**  
-   En el binding de la instancia + record durable.
-
-9. **¿Qué concurrencia promete?**  
-   La misma que Memory Contract: un writer por Change a la vez.
-
-10. **¿Qué se implementa primero?**  
-    Un slice puro/in-memory; no Engram ni runtime.
-
----
-
-## 30. Próxima frontier
-
-Si F6A se aprueba:
-
-```text
-F6B — Semantic API pure-domain spike
-```
-
-Ubicación temporal:
-
-```text
-experiments/semantic-api/
-```
-
-Objetivo:
-
-> falsar las invariantes de este documento sin backend real y sin crear todavía producto distribuible.
-
-Cuando el spike termine:
-
-```text
-evidencia útil
--> decisión
--> promoción mínima o corrección
--> eliminar experimento
-```
+No se agregan commands fuera de este documento durante implementación sin falsificar primero
+una garantía congelada.
