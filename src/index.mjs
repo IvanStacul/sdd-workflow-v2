@@ -19,3 +19,23 @@ export {
   EngramHttpError,
   EngramTransportError,
 } from './adapters/engram/transport.mjs';
+
+export {
+  createProjectConfig,
+  findProjectBinding,
+  loadProjectConfig,
+} from './project/config.mjs';
+
+export {
+  initProject,
+} from './project/install.mjs';
+
+export {
+  createProjectRuntime,
+} from './runtime/project-runtime.mjs';
+
+export {
+  RUNTIME_RULES,
+  renderMcpInstructions,
+  renderRuntimeProjectionMarkdown,
+} from './runtime/projection.mjs';

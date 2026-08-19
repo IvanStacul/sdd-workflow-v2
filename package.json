@@ -8,9 +8,18 @@
   },
   "scripts": {
     "test": "node --test",
-    "test:engram": "node --test tests/engram-integration/engram.integration.mjs"
+    "test:engram": "node --test tests/engram-integration/engram.integration.mjs",
+    "test:mcp": "node --test tests/mcp-contract/*.test.mjs"
   },
   "exports": {
-    ".": "./src/index.mjs"
+    ".": "./src/index.mjs",
+    "./mcp": "./src/transports/mcp/server.mjs"
+  },
+  "bin": {
+    "sdd-v2": "./bin/sdd-v2.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "zod": "4.4.3"
   }
 }
