@@ -355,28 +355,26 @@ evidence:
     summary: ...
     covers: [A1]
     source: optional
-
-evidence_refs: optional
 ```
 
 Reglas:
 
 - outcome requerido;
-- al menos una evidence embebida o ref válida;
+- evidence embebida requerida;
 - explicit acceptance exige coverage exacto;
 - unknown coverage rechazado;
 - `result=fail` no soporta completion;
 - no crea continuity;
 - un único Change nace `closed/completed`.
 
-Si usa `evidence_refs`, Application API hace exact get y valida:
+`createReceipt` **no acepta `evidence_refs`**.
 
-```text
-kind=evidence
-subject_id coherente
-result != fail
-coverage válida
-```
+Motivo: un Evidence independiente exige `subject_id=CHG-...`, pero el Change del receipt
+todavía no tiene identidad antes de esta operación. Permitir refs aquí exigiría Evidence
+dangling, preasignación externa del Change ID o una operación multi-record innecesaria.
+
+Para un Change que ya existe, `closeChange(completed)` sí puede combinar evidence embebida
+con `evidence_refs` previamente persistidas y validadas contra ese Change.
 
 ---
 
