@@ -2,7 +2,8 @@
 
 ## 1. Estado
 
-**Estado:** arquitectura congelada para completar la primera Alpha reconstruida.
+**Estado:** arquitectura congelada; implementación de producto completada; Block C pre-dogfood
+es el siguiente y único gate interno.
 
 Este documento es la autoridad **cross-layer** de SDD V2. Los contratos especializados:
 
@@ -12,42 +13,47 @@ docs/memory-contract.md
 docs/semantic-api.md
 ```
 
-detallan sus respectivas capas y no pueden contradecir esta arquitectura.
+detallan sus capas y no pueden contradecir esta arquitectura.
 
-La reconstrucción no comienza de cero. Se conservan los resultados válidos ya obtenidos:
+Resultados acumulados:
 
 - una sola autoridad semántica durable;
 - persistencia adaptativa `ephemeral | receipt | continuity`;
-- Change con identidad `CHG-<ULID>`;
-- lifecycle `open | closed`;
-- continuity/frontier pequeña;
+- Change `CHG-<ULID>` con lifecycle `open | closed`;
+- continuity/frontier pequeña y actionable;
 - recovery exacto;
-- Memory Contract `put/get/list`;
-- Engram 1.20.0 validado contra el modelo inicial;
-- Changes independientes + handoff secuencial;
-- spike F6B con invariantes de receipt/continuity/closure falsadas en memoria.
+- Memory Contract `put/get/list`, con `search` opcional;
+- Engram 1.20.0 validado y adaptado mediante superficie pública;
+- Application API tipada y transport-free;
+- Decision/Evidence/Knowledge productivos;
+- scope evolution mediante refinement/spawn/dependency;
+- MCP transport productivo;
+- Codex bootstrap productivo;
+- binding mínimo y host-independent;
+- Runtime Projection derivada de una sola fuente;
+- suite automatizada de Domain/Application/Memory/Engram/MCP/host;
+- integración real con Engram confirmada por el usuario.
 
-Lo que **no** se congela como producto es la implementación de
-`experiments/semantic-api/`.
+Los spikes ya no constituyen producto ni autoridad.
 
 Regla:
 
-> Una vez congelada una garantía, la implementación corrige bugs contra el contrato.
-> No se abre otro horizonte arquitectónico durante Block B salvo que una prueba falsifique
-> explícitamente una garantía congelada.
+> Block C puede descubrir defects de implementación o falsificar garantías. No puede abrir un
+> nuevo horizonte conceptual por preferencia. Un cambio arquitectónico exige evidencia de que
+> una garantía congelada no puede sostenerse.
 
 ---
 
 ## 2. Objetivo
 
-SDD V2 conserva las garantías intelectuales útiles de Spec-Driven Development:
+SDD V2 conserva las garantías útiles de Spec-Driven Development:
 
 - intención clara;
 - scope explícito cuando aporta;
 - acceptance observable;
 - constraints;
 - risks y edge cases materiales;
-- open questions que realmente bloquean;
+- open questions realmente bloqueantes;
 - decisiones durables;
 - evidencia verificable;
 - continuidad entre sesiones/agentes;
@@ -73,13 +79,13 @@ La unidad de diseño es una **garantía**, no un artefacto.
 
 ```text
 scope control
-≠
+!=
 proposal.md obligatorio
 ```
 
 ```text
 evidence-backed completion
-≠
+!=
 verify.md obligatorio
 ```
 
@@ -89,7 +95,7 @@ Minimalidad se aplica a mecanismos, no a garantías.
 
 ## 3. Responsabilidad propia de SDD
 
-Los harnesses modernos ya poseen:
+Los harnesses poseen:
 
 - repo navigation;
 - edición;
@@ -103,7 +109,7 @@ Los harnesses modernos ya poseen:
 
 SDD no reconstruye esas capacidades.
 
-SDD posee únicamente la semántica durable portable entre hosts:
+SDD posee la semántica durable portable entre hosts:
 
 1. cuándo una intención merece estado durable;
 2. qué significa un Change;
@@ -118,30 +124,30 @@ SDD posee únicamente la semántica durable portable entre hosts:
 
 ---
 
-## 4. V1 → V2: keep / adapt / remove
+## 4. V1 -> V2: keep / adapt / remove
 
 | Garantía / mecanismo | Decisión V2 | Motivo |
 |---|---|---|
-| Intent explícito | **KEEP** | Núcleo de Change. |
+| Intent explícito | **KEEP** | Núcleo del Change. |
 | Scope | **KEEP adaptive** | Solo cuando reduce drift. |
 | Acceptance | **KEEP adaptive** | Condiciones observables. |
-| Constraints | **KEEP adaptive** | Si cambian solución/recovery. |
+| Constraints | **KEEP adaptive** | Cuando cambian solución/recovery. |
 | Risks | **KEEP adaptive** | Garantía sí; sección obligatoria no. |
 | Edge cases | **KEEP adaptive** | Igual que risks. |
 | Open questions | **KEEP material** | Solo si bloquean/cambian solución. |
 | Decisions | **KEEP semantic record** | Decisiones materiales y costosas de redescubrir. |
 | Evidence | **KEEP + strengthen** | Completion no depende de texto ceremonial. |
 | Continuity | **KEEP smaller** | Change + actionable frontier. |
-| Scope evolution | **KEEP** | Refinement/spawn/dependency en Alpha inicial. |
+| Scope evolution | **KEEP** | Refinement/spawn/dependency implementados. |
 | Knowledge | **KEEP** | Reusable, separado de repo truth/skills. |
 | proposal/spec/design/tasks obligatorios | **REMOVE** | El proyecto puede usarlos; SDD no los exige. |
 | Phase graph | **REMOVE** | El host ejecuta. |
-| WorkUnit obligatorio | **REMOVE** | Volvería solo con evidencia. |
+| WorkUnit obligatorio | **REMOVE** | Solo volvería con evidencia. |
 | Router `direct|compact|full` | **REMOVE as core** | Profundidad adaptativa sin enum obligatoria. |
-| Session lifecycle | **REMOVE** | No es autoridad durable SDD. |
+| Session lifecycle SDD | **REMOVE** | No es autoridad durable. |
 | `.sdd/state.json` canónico | **REMOVE** | Evita doble autoridad. |
 | Roadmap/timeline como state | **REMOVE** | Son proyecciones. |
-| Migration Alpha.1 | **DEFER** | No crear deuda antes de baseline estable. |
+| Migration Alpha.1 | **DEFER** | No hay compatibilidad que preservar con baseline invalidada. |
 
 ---
 
@@ -166,16 +172,16 @@ Durable writes SDD:
 
 ### Receipt
 
-Trabajo material completado en la ejecución actual:
+Trabajo material completado en la ejecución actual cuando la trazabilidad durable aporta:
 
 ```text
 request
 -> ACT
--> verify
+-> verify real
 -> createReceipt
 ```
 
-Receipt es un Change cerrado directamente; no inventa lifecycle previo.
+Receipt es un Change `closed/completed` creado directamente.
 
 ### Continuity
 
@@ -184,36 +190,36 @@ Trabajo/intención que debe sobrevivir:
 ```text
 openChange
 -> ACT
--> setFrontier cuando haga falta persistir handoff
+-> setFrontier cuando haga falta
 -> restart/new agent
--> getChange
+-> getChange exacto
 -> inspección dirigida
 -> ACT
 -> closeChange
 ```
 
-No se actualiza el Change después de cada tool call.
+No se persiste después de cada tool call.
 
 ---
 
-## 6. Arquitectura de capas
+## 6. Arquitectura implementada
 
 ```text
                          User
                           |
                           v
                  Host Agent / Harness
-            Codex / OpenCode / VS Code / ...
                           |
-                 tiny host bootstrap
+                 host bootstrap
                           |
                           v
                  Runtime Projection
-              (small, implemented rules)
+                          |
+                          v
+                   MCP Transport
                           |
                           v
                SDD Application API
-              (semantic, transport-free)
                   /      |       \
                  /       |        \
              Change   Decision   Evidence/Knowledge
@@ -226,10 +232,13 @@ No se actualiza el Change después de cada tool call.
                           |
                 +---------+---------+
                 |                   |
-          Engram Repository     Other Repository
+          Engram Repository     Future Repository
+                |
+                v
+             Engram
 ```
 
-Side channels del host:
+Side channels siguen en el host:
 
 ```text
 repo search
@@ -246,16 +255,19 @@ context providers
 
 No significa REST.
 
-Puede exponerse mediante:
+Implementado:
 
 ```text
 library
 MCP
-CLI structured
-HTTP/REST si aparece un consumidor real
+CLI bootstrap/admin
 ```
 
-Transport y dominio son responsabilidades distintas.
+No implementado porque no existe necesidad demostrada:
+
+```text
+HTTP/REST
+```
 
 ---
 
@@ -272,18 +284,73 @@ Knowledge
 
 No hay WorkUnit en core.
 
-Change conserva intent, lifecycle, contract adaptativo, continuity, relations y closure.
-Decision conserva elecciones materiales.
-Evidence estructura observaciones que soportan completion.
-Knowledge conserva hechos reutilizables.
+### Change
 
-Los schemas exactos viven en `docs/change-model.md`.
+Representa intención durable.
+
+Mínimo:
+
+```yaml
+id: CHG-<ULID>
+title: ...
+intent: ...
+lifecycle: open | closed
+```
+
+Adaptativo:
+
+```yaml
+contract:
+  scope:
+  acceptance:
+  constraints:
+  risks:
+  edge_cases:
+  open_questions:
+  rollback:
+
+continuity:
+  completed:
+  next:
+  blockers:
+
+relations:
+  spawned_from:
+  depends_on:
+
+close:
+  reason:
+  outcome:
+  evidence:
+  evidence_refs:
+```
+
+No se materializan campos vacíos.
+
+### Decision
+
+Elección durable material, con rationale y supersession explícita cuando importa.
+
+### Evidence
+
+Observación estructurada; puede quedar embebida en closure/receipt o existir como record
+independiente.
+
+### Knowledge
+
+Hecho reusable del proyecto; no duplica rutinariamente repo truth.
+
+Schemas exactos:
+
+```text
+docs/change-model.md
+```
 
 ---
 
 ## 8. Scope evolution
 
-Primera Alpha implementa:
+Implementado:
 
 ```text
 refineChange
@@ -291,18 +358,38 @@ spawnChange
 addDependency
 ```
 
-`spawnChange` crea un child con `spawned_from` sin mutar origin.
+### Refinement
 
-`addDependency` persiste solo `depends_on`; nunca el inverso `blocks`.
+Misma intención material.
 
-`split` y `supersede` permanecen en el modelo, pero no se exponen como operación compuesta
-hasta definir partial-failure semantics multi-record.
+### Spawn
+
+Nueva intención:
+
+```text
+child.spawned_from = origin
+```
+
+No muta origin.
+
+### Dependency
+
+Persiste:
+
+```text
+depends_on
+```
+
+No persiste el inverso `blocks`.
+
+### Split / supersede
+
+Reconocidos por Domain Model pero no automatizados hasta disponer de partial-failure semantics
+multi-record.
 
 ---
 
-## 9. SDD Application API
-
-Commands y queries semánticas; no JSON Patch.
+## 9. Application API
 
 Queries:
 
@@ -311,7 +398,7 @@ getChange
 listOpenChanges
 getDecision
 getEvidence
-searchKnowledge (optional)
+searchKnowledge
 ```
 
 Commands:
@@ -333,13 +420,17 @@ No existe:
 
 ```text
 putRecord(arbitraryJson)
-patchRecord(path, value)
-setLifecycle
-setProject
-setKind
+patchRecord(...)
+setLifecycle(...)
+setProject(...)
+setKind(...)
 ```
 
-El contrato detallado vive en `docs/semantic-api.md`.
+Contrato exacto:
+
+```text
+docs/semantic-api.md
+```
 
 ---
 
@@ -347,39 +438,47 @@ El contrato detallado vive en `docs/semantic-api.md`.
 
 ### Transport-free
 
-Application API no conoce HTTP, MCP JSON-RPC, CLI argv ni Engram physical IDs.
+Application no conoce HTTP, MCP JSON-RPC, CLI argv ni Engram physical IDs.
 
 ### Project-bound
 
-Una instancia queda ligada a `project_id`.
+La instancia Application queda ligada a `project_id`.
 
 ### Validate before side effects
 
 ```text
 validate
 -> semantic preconditions
--> allocate id
+-> allocate ID
 -> collision preflight
 -> persist
 ```
 
-Input inválido produce cero IDs consumidos y cero writes.
+Input inválido:
+
+```text
+0 IDs consumidos
+0 writes
+```
 
 ### Strict schemas
 
-Todo campo aceptado tiene schema.
+Unknown field se rechaza.
 
 ### Contract refinement explícito
 
-Omitted = preserve; value = replace esa sección; null = remove; array vacío = normalize absent.
-
-No se reemplaza contract completo implícitamente.
+```text
+omitted -> preserve
+value   -> replace esa sección validada
+null    -> remove
+[]      -> normalize absent
+```
 
 ### Exact acceptance coverage
 
 ```text
-missing acceptance -> reject
-unknown acceptance -> reject
+missing required ID -> reject
+unknown ID          -> reject
 ```
 
 ### ID collision
@@ -395,7 +494,7 @@ No es reserva atómica.
 
 ### Immutability
 
-Decision/Evidence independientes no se actualizan silenciosamente.
+Decision/Evidence independientes no aceptan arbitrary update.
 
 ### Error taxonomy
 
@@ -415,33 +514,39 @@ memory_error
 
 ## 11. Evidence
 
-Completion durable usa evidence estructurada:
+Forma mínima:
 
 ```yaml
 method: test | build | lint | runtime | inspection | diff | external | other
 result: pass | fail | observed
 summary: ...
 covers: [A1]
-source: optional
+source:
+  command: optional
+  reference: optional
 ```
 
-`fail` nunca soporta completion.
+Reglas:
 
-Coverage debe corresponder exactamente a acceptance existente.
-
-Evidence independiente se usa cuando necesita identidad/auditoría/reuse.
+- `method`, `result`, `summary` estructuran la observación;
+- coverage solo usa acceptance IDs existentes;
+- acceptance explícita debe quedar cubierta;
+- `fail` puede persistirse como diagnóstico pero no soporta completion;
+- `observed` puede soportar evidencia observacional;
+- el host produce la observación real;
+- SDD no inventa ejecución de tests/browser/shell.
 
 ---
 
 ## 12. Memory Port
 
-Contrato ya validado:
+Implementado:
 
 ```text
-put
-get
-list
-search optional
+put(record)
+get(ref)
+list(selector)
+search(text, filters) optional
 ```
 
 Envelope:
@@ -455,30 +560,51 @@ subject_id: optional
 payload: ...
 ```
 
-Application API controla semántica. Memory Port controla durability/exactness/isolation.
+Application controla semántica.
+
+Memory Port controla durability/exactness/isolation.
 
 ---
 
 ## 13. Engram Repository
 
-F5 ya probó mediante superficie pública:
+Implementación productiva:
+
+```text
+src/adapters/engram/
+├── codec.mjs
+├── errors.mjs
+├── repository.mjs
+├── session.mjs
+└── transport.mjs
+```
+
+Usa superficie HTTP pública de Engram 1.20.0 mediante transport encapsulado.
+
+Garantías implementadas/probadas:
 
 ```text
 put/get
 sequential update
 fresh-instance recovery
-exact identity
-bounded list
+exact logical identity
+bounded list + complete flag
 project isolation
-lost POST/PATCH reconciliation
-unavailable
-cleanup
+lost POST reconciliation
+lost PATCH reconciliation
+unavailable normalization
+private-tag transform neutralization
+size limit fail-before-write
+physical/logical identity validation
 ```
 
-Product implementation encapsula transport, physical codec, serialization, exactness,
-reconciliation y error mapping.
+No se modifica Engram.
 
-No se copia el spike como producto.
+No se lee SQLite privado.
+
+No se usa una memoria paralela.
+
+La session física determinista de Engram es plumbing backend, no continuity SDD.
 
 ---
 
@@ -487,14 +613,23 @@ No se copia el spike como producto.
 Soportado:
 
 ```text
-independent Changes
-sequential handoff same Change
+Agent A -> Change A
+Agent B -> Change B
+```
+
+y:
+
+```text
+Agent A -> setFrontier -> termina
+Agent B -> getChange exacto -> continúa
 ```
 
 No soportado:
 
 ```text
-same-Change concurrent writers
+Agent A \
+         > mutan Change X simultáneamente
+Agent B /
 ```
 
 No CAS/locks/LWW falsos.
@@ -505,195 +640,383 @@ No CAS/locks/LWW falsos.
 
 ### Library
 
-Composición interna canónica.
+Implementada como composición interna/canónica.
 
 ### MCP
 
-Primer transport objetivo para agentes.
+Implementado:
+
+```text
+src/transports/mcp/
+```
+
+Expone operaciones Application tipadas mediante MCP v1 SDK y schemas Zod.
+
+No expone raw Memory Port ni primitives de Engram.
 
 ### CLI
 
-Fallback/admin/debug con structured I/O.
+Implementado:
+
+```text
+sdd-v2 init
+sdd-v2 mcp
+sdd-v2 help
+```
+
+No es segunda implementación del dominio.
 
 ### HTTP/REST
 
-Fuera del mínimo actual.
+No implementado.
 
-Solo entra con consumidor real y entonces se diseña como REST de verdad: resources, methods,
-status codes, idempotency, pagination, error representation, versioning, OpenAPI y auth.
+Solo entra con consumidor real y entonces deberá diseñarse con semantics HTTP reales.
 
 ---
 
-## 16. Host Adapter
+## 16. Host Adapter — Codex
 
-Primer target:
+Implementado:
 
 ```text
-Codex
+src/hosts/codex/bootstrap.mjs
 ```
 
-Responsabilidad: bootstrap, project binding, transport configuration y capability projection.
+Responsabilidades:
 
-No contiene Domain rules ni Engram mapping.
+```text
+managed block en AGENTS.md
+managed MCP config en .codex/config.toml
+conflict preflight
+preservación de contenido user-owned
+```
+
+No contiene:
+
+```text
+Domain validation
+Engram mapping
+Change lifecycle rules
+```
+
+El descubrimiento real por Codex pertenece al Block C, porque existencia del archivo/config no
+demuestra que el harness haya cargado y usado las tools.
 
 ---
 
 ## 17. Runtime Projection
 
-Solo instrucciones pequeñas sobre capabilities implementadas:
+Fuente única:
+
+```text
+src/runtime/projection.mjs
+```
+
+Se proyecta a:
+
+```text
+AGENTS.md managed block
+MCP server instructions
+```
+
+Reglas ejecutables incluyen:
 
 1. ephemeral no requiere SDD;
-2. material completed puede dejar receipt;
+2. receipt es selectivo;
 3. pending/handoff usa continuity;
-4. scope/acceptance/risks solo cuando cambian la acción;
-5. known recovery = exact get -> directed inspection -> ACT;
-6. completion durable = structured evidence;
-7. nuevo scope = spawn;
-8. Decision material puede persistirse;
-9. Knowledge recurrente puede promoverse;
-10. same-Change concurrent writers no soportado.
+4. contracts son adaptativos;
+5. recovery conocido usa exact get + inspección dirigida;
+6. completion durable usa Evidence real;
+7. nuevo intent se spawnea;
+8. Decision es selectiva;
+9. Knowledge es reusable/selectivo;
+10. same-Change concurrent writers no soportado;
+11. backend details nunca son estado canónico SDD.
+
+No hay dos runtimes que puedan divergir.
 
 ---
 
 ## 18. Skills
 
-Default:
+Primera Alpha:
 
 ```text
 0 skills SDD obligatorias
 ```
 
-Una skill solo entra con trigger claro y beneficio real de progressive disclosure.
+Una skill solo entra si:
+
+- tiene trigger claro;
+- contenido condicional sustancial;
+- progressive disclosure aporta;
+- scripts/resources justifican encapsulación.
+
+No se recrean skills históricas por simetría.
 
 ---
 
 ## 19. Project binding
 
-Conceptual:
+Forma implementada:
 
-```yaml
-project_id: stable-id
-memory:
-  adapter: engram
-  version: 1.20.0
-transport:
-  preferred: mcp
+```json
+{
+  "schema_version": 1,
+  "project_id": "stable-project-id",
+  "memory": {
+    "adapter": "engram"
+  }
+}
 ```
 
-No contiene current Change ni segunda autoridad.
+El binding contiene identidad/selección durable, no detalles del harness ni de la máquina.
+
+No contiene:
+
+```text
+current Change
+roadmap
+history
+runtime copy
+host=codex
+container name
+token
+```
+
+Environment wiring:
+
+```text
+SDD_ENGRAM_CONTAINER
+ENGRAM_HTTP_TOKEN
+```
+
+Host wiring permanece en `.codex/config.toml`, no en el binding semántico.
 
 ---
 
-## 20. Arquitectura de código productivo
+## 20. Bootstrap/distribución
+
+CLI productiva:
 
 ```text
+sdd-v2 init <target> --project-id <stable-id>
+```
+
+Instala en consumidor:
+
+```text
+.sdd/config.json
+AGENTS.md managed block
+.codex/config.toml managed block
+```
+
+No instala:
+
+```text
+.sdd/state.json
+.sdd/runtime/**
+SDD skills
+duplicated source code
+```
+
+`init` preflights ownership/config conflicts antes de mutar estado semántico del proyecto.
+
+La distribución aún conserva package version de desarrollo hasta superar Block C y auditoría
+independiente.
+
+---
+
+## 21. Arquitectura de código productivo
+
+```text
+bin/
+└── sdd-v2.mjs
+
 src/
 ├── domain/
 ├── application/
 ├── ports/
-├── adapters/engram/
-├── transports/mcp/
-└── hosts/codex/
+├── adapters/
+│   └── engram/
+├── transports/
+│   └── mcp/
+├── project/
+├── runtime/
+├── hosts/
+│   └── codex/
+└── cli/
 
 tests/
 ├── domain/
 ├── application/
 ├── memory-contract/
 ├── engram-integration/
-├── transport-contract/
-└── conformance/
+├── mcp-contract/
+├── project/
+├── hosts/
+├── fixtures/
+└── helpers/
 ```
 
-Separar por responsabilidad arquitectónica, no por deseo de multiplicar archivos.
+Separar por responsabilidad, no por cantidad artificial de archivos.
 
 ---
 
-## 21. Reutilización de spikes
+## 22. Resolución de experiments
 
-Engram spike: reusar mapping, endpoint audit, edge cases y conformance scenarios.
+### Engram spike
 
-Semantic API spike: reusar invariantes 22/22 y casos negativos.
+Ya cumplió su función: endpoint audit, mapping y escenarios fueron absorbidos por repository/tests
+productivos.
 
-No promover archivos experimentales directamente.
+No pertenece al active tree.
 
-Findings posteriores al PASS ya absorbidos en los contratos:
+### Semantic API spike
 
-- schema holes;
-- dynamic `this`;
-- test helpers mezclados;
-- ID antes de validation;
-- unknown coverage;
-- contract replacement permisivo;
-- collision preflight faltante.
+F6B aportó:
+
+- baseline de invariantes;
+- receipt semantics;
+- frontier behavior;
+- closure negative cases;
+- completeness propagation;
+- error normalization.
+
+Esas garantías ya están absorbidas por:
+
+```text
+src/domain/**
+src/application/**
+tests/domain/**
+tests/application/**
+tests/memory-contract/**
+```
+
+Por P12 Active-tree hygiene:
+
+```text
+DELETE experiments/semantic-api/
+```
+
+Git conserva su historia.
+
+`experiments/README.md` permanece como política para futuros experimentos activos.
 
 ---
 
-## 22. Testing strategy
+## 23. Testing status
 
-Domain:
-
-```text
-schemas
-lifecycle
-contract
-evidence
-relations
-IDs
-close rules
-```
-
-Application:
+Implementado y ejercitado durante Block B:
 
 ```text
-commands/queries
-project binding
-collision retry
-coverage
-immutability
-error translation
+Domain unit tests
+Application tests
+Memory behavior/contract tests
+Engram codec tests
+Engram repository tests
+Engram transport tests
+real Engram integration
+project binding tests
+runtime composition/projection tests
+Codex bootstrap tests
+MCP tool mapping/schema tests
+MCP STDIO client/server contract
+CLI/init tests
 ```
 
-Memory Contract: misma suite contra repositories.
-
-Engram: F5 + restart/new process + hard failures.
-
-MCP: schemas, mapping, structured errors, cero backend leakage.
-
-Conformance:
+El usuario confirmó en su entorno:
 
 ```text
-ephemeral
-receipt
-continuity
-recovery
-spawn
-dependency
-decision
-evidence-backed close
-knowledge promotion
-independent Changes
+npm test                  PASS
+npm run test:mcp          PASS
+npm run test:engram       PASS
 ```
+
+Esto demuestra Block B implementado y testable.
+
+No demuestra todavía:
+
+```text
+real Codex tool discovery
+real Codex invocation
+cross-session host recovery
+full end-to-end conformance from harness
+quality score gate
+```
+
+Esos son Block C.
 
 ---
 
-## 23. Gate pre-dogfood
+## 24. Gate pre-dogfood — Block C
 
-Structural:
+Block C no agrega features salvo que una prueba falsifique una garantía.
+
+### C1 — Structural/static audit
+
+Verificar:
 
 ```text
 one durable authority
-exact recovery
-real Engram repository
-no side-state authority
-structured completion evidence
-scope evolution implementada
-Decision/Evidence/Knowledge sin arbitrary JSON
-declared concurrency
-runtime promete solo implemented capabilities
+Domain sin Engram/MCP/Codex leakage
+Application sin backend coupling
+MCP sin reglas de dominio duplicadas
+Codex host solo wiring
+binding sin current state
+runtime promises == implemented capabilities
+no dead experiment/product path
 no unjustified skills
 ```
 
-Quality:
+### C2 — Real Codex transport discovery
+
+Sobre un proyecto de conformance, no dogfood:
+
+```text
+sdd-v2 init
+restart/new Codex context
+Codex carga managed AGENTS block
+Codex descubre server sdd
+Codex ve exactamente las tools SDD esperadas
+una query y una mutation atraviesan MCP real
+no aparecen mem_save/topic_key/Engram primitives como API SDD
+```
+
+### C3 — End-to-end conformance
+
+Ejercer desde host real:
+
+```text
+ephemeral -> zero SDD write
+receipt -> direct closed Change
+continuity -> open Change + frontier
+fresh context -> exact recovery
+evidence-backed completed close
+spawn new material intent
+dependency relation
+material Decision
+Evidence record
+Knowledge promotion/search
+multiple independent Changes
+sequential same-Change handoff
+```
+
+No probar como requisito un modelo no soportado de same-Change concurrent writers.
+
+### C4 — Failure/conformance boundaries
+
+Verificar:
+
+```text
+Engram unavailable -> memory_unavailable
+complete=false no se vuelve exhaustive
+invalid MCP input no escribe
+host config conflict fails closed
+no phantom success
+```
+
+### C5 — Quality gate
 
 | Área | Gate |
 |---|---:|
@@ -702,22 +1025,48 @@ Quality:
 | Architecture fidelity | 8.5/10 |
 | State correctness | 9/10 |
 | Durability/continuity | 8.5/10 |
-| Multi-agent/worktree | 8/10 |
+| Multi-agent/worktree declared model | 8/10 |
 | Product maturity | 7.5/10 |
 
 Ningún área <7.
 
+La evaluación debe citar findings concretos; no se usa un promedio para ocultar un área roja.
+
+### C6 — Exit
+
+Solo si C1-C5 pasan:
+
+```text
+Block C DONE
+-> fresh-chat independent audit
+```
+
+La auditoría independiente decide:
+
+```text
+GO
+NO-GO con findings concretos
+```
+
+Dogfood empieza únicamente con GO.
+
 ---
 
-## 24. Trabajo restante
+## 25. Trabajo restante
 
 ### Block A — Contract alignment
 
-**DONE con esta entrega.**
+```text
+DONE
+```
 
 ### Block B — Product implementation
 
-**NEXT.**
+```text
+DONE
+```
+
+Implementado:
 
 ```text
 Domain
@@ -733,17 +1082,13 @@ tests
 
 ### Block C — Product gate
 
-Después de Block B:
-
 ```text
-test suites
-real Engram
-MCP contract
-conformance
-static/code architecture review
+NEXT
 ```
 
-Luego:
+No se crean más frontiers conceptuales salvo falsificación de una garantía central.
+
+Después:
 
 ```text
 fresh-chat independent audit
@@ -751,11 +1096,9 @@ fresh-chat independent audit
 -> DOGFOOD
 ```
 
-No se crean más frontiers conceptuales salvo falsificación de una garantía central.
-
 ---
 
-## 25. Estado
+## 26. Estado de milestones
 
 ```text
 Architecture ownership              DONE
@@ -764,20 +1107,20 @@ Engram backend fit                  DONE
 Domain Model                        DONE
 Application API contract            DONE
 Architecture / contract freeze      DONE
+Product implementation              DONE
 
-Product implementation              NEXT
-Pre-dogfood gate                    PENDING
+Pre-dogfood product gate            NEXT
 Fresh independent audit             PENDING
 DOGFOOD                             PENDING
 ```
 
 ---
 
-## 26. Regla final
+## 27. Regla final
 
-> SDD V2 implementa la mínima maquinaria que preserve de forma ejecutable las garantías
-> que evitan pérdida de intención, scope drift, decisiones olvidadas, continuidad rota
-> y completion sin evidencia.
+> SDD V2 implementa la mínima maquinaria que preserve de forma ejecutable las garantías que
+> evitan pérdida de intención, scope drift, decisiones olvidadas, continuidad rota y completion
+> sin evidencia.
 
 Minimalidad se aplica a mecanismos.
 

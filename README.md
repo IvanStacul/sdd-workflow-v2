@@ -1,10 +1,11 @@
-# SDD Workflow V2 — Product Reconstruction
+# SDD Workflow V2
 
-SDD V2 está completando una reconstrucción de producto antes de volver al dogfood.
+SDD V2 es una reconstrucción de Spec-Driven Development orientada a agentes y harnesses
+modernos.
 
-La V2 busca preservar las garantías útiles de Spec-Driven Development —intención, scope,
-acceptance, risks, decisions, evidence y continuidad— sin volver a una cadena obligatoria
-de proposal/spec/design/tasks ni duplicar capacidades de Codex, OpenCode y otros harnesses.
+Su objetivo es preservar las garantías que realmente evitan pérdida de intención, scope drift,
+decisiones olvidadas, continuidad rota y completion sin evidencia, sin volver a una cadena
+obligatoria de proposal/spec/design/tasks ni duplicar capacidades del host.
 
 ## Estado
 
@@ -15,17 +16,18 @@ Engram backend fit                  DONE
 Domain Model                        DONE
 Application API contract            DONE
 Architecture / contract freeze      DONE
+Product implementation              DONE
 
-Product implementation              NEXT
-Pre-dogfood gate                    PENDING
+Pre-dogfood product gate            NEXT
 Fresh independent audit             PENDING
 DOGFOOD                             PENDING
 ```
 
-No hay actualmente una Alpha instalable considerada válida.
+La implementación actual es una **candidata de Alpha reconstruida**, todavía no declarada apta
+para dogfood hasta superar Block C.
 
-`0.2.0-alpha.1` fue invalidada como baseline. Git conserva su historia y
-`docs/dogfood-evidence.md` conserva la evidencia empírica relevante.
+`0.2.0-alpha.1` permanece invalidada como baseline. Git conserva su historia y
+`docs/dogfood-evidence.md` conserva la evidencia empírica útil.
 
 ## Arquitectura
 
@@ -34,6 +36,9 @@ Host Agent / Harness
         |
         v
 Runtime Projection
+        |
+        v
+SDD MCP Transport
         |
         v
 SDD Application API
@@ -46,39 +51,80 @@ Domain Model
 Memory Port
         |
         v
-Backend Repository
+Engram Repository
         |
-        +--> Engram
-        +--> otro backend
+        v
+Engram 1.20.0
+```
+
+Las responsabilidades permanecen separadas:
+
+```text
+host           -> navegación, edición, shell, tests, browser, subagents
+runtime        -> reglas SDD pequeñas que cambian la acción del agente
+MCP            -> transport estructurado
+application    -> casos de uso semánticos
+domain         -> significado e invariantes
+memory port    -> contrato durable
+repository     -> traducción al backend
+Engram         -> almacenamiento externo
 ```
 
 **Application API no significa REST.**
 
-Es la frontera programática transport-free de SDD. Puede exponerse por library, MCP, CLI y,
-solo si aparece una necesidad real, HTTP/REST.
+Library y MCP están implementados. CLI existe para bootstrap/admin. HTTP/REST queda fuera del
+mínimo mientras no exista un consumidor real que lo necesite.
 
 ## Principio operativo
 
+### Ephemeral
+
 ```text
-ephemeral
-  -> ACT -> verify -> fin
-
-receipt
-  -> ACT -> verify -> Change closed/completed
-
-continuity
-  -> Change open + actionable frontier
-  -> handoff/restart
-  -> exact recovery
-  -> ACT
-  -> evidence-backed close
+request
+-> ACT
+-> verify proporcional
+-> fin
 ```
 
-No existe una llamada SDD obligatoria por request.
+Durable writes SDD:
+
+```text
+0
+```
+
+### Receipt
+
+Trabajo material terminado en la ejecución actual, cuando la trazabilidad durable aporta:
+
+```text
+request
+-> ACT
+-> verify real
+-> createReceipt
+```
+
+Receipt es un Change que nace `closed/completed`.
+
+### Continuity
+
+Trabajo/intención que debe sobrevivir:
+
+```text
+openChange
+-> ACT
+-> persistir frontier cuando corresponda
+-> handoff/restart
+-> exact get
+-> inspección dirigida
+-> ACT
+-> evidence-backed close
+```
+
+No se actualiza SDD después de cada tool call.
 
 ## Garantías conservadas
 
-De la riqueza histórica de V1/V2 se conservan de forma adaptativa:
+El modelo puede representar adaptativamente:
 
 ```text
 intent
@@ -88,7 +134,7 @@ constraints
 risks
 edge cases
 material open questions
-rollback cuando aporta
+rollback
 Decision
 structured Evidence
 continuity/frontier
@@ -96,81 +142,78 @@ scope evolution
 Knowledge reusable
 ```
 
-Lo que se elimina es la obligación de materializar artefactos por ceremonia.
-
-## Fuentes activas
+Tener una garantía no implica materializar una sección o archivo obligatorio.
 
 ```text
-docs/rebaseline-architecture.md  arquitectura cross-layer congelada
-docs/change-model.md             Domain Model de Change/Decision/Evidence/Knowledge
-docs/memory-contract.md          frontera durable validada
-docs/semantic-api.md             Application API y casos de uso
-docs/dogfood-evidence.md         evidencia histórica normalizada
+scope control
+!=
+proposal.md obligatorio
+
+evidence-backed completion
+!=
+verify.md obligatorio
 ```
 
-Jerarquía:
+## Domain Model
+
+Records lógicos de la primera Alpha:
 
 ```text
-rebaseline-architecture
--> contratos especializados
--> implementación
--> runtime projection
+Change
+Decision
+Evidence
+Knowledge
 ```
 
-La implementación no puede prometer más que los contratos.
-
-## Engram
-
-`infra/engram/` conserva la infraestructura validada para Engram 1.20.0.
-
-F5 demostró mediante superficie pública:
+No pertenecen al core inicial:
 
 ```text
-put/get
-sequential update
-fresh-instance recovery
-exact identity
-bounded list
-project isolation
-lost POST/PATCH reconciliation
-backend unavailable
-clean cleanup
+WorkUnit
+Progress record
+SessionSummary
+roadmap state
+event stream
 ```
 
-No se modifica Engram, no se lee su SQLite privado y no existe `.sdd/state.json` como segunda
-autoridad.
+### Change
 
-El transporte físico usado por el spike no es automáticamente la distribución final.
-
-## Modelo de concurrencia
-
-Soportado:
+Identidad:
 
 ```text
-multiple agents/worktrees sobre Changes independientes
-handoff secuencial del mismo Change
+CHG-<ULID>
 ```
 
-No soportado:
+Lifecycle:
 
 ```text
-same-Change concurrent writers
+open
+closed
 ```
 
-No CAS/locks por anticipado.
-
-## Evidence
-
-Completion durable no se justifica con:
+Continuity abierta conserva solo lo necesario para reanudar:
 
 ```text
-"done"
-"tests pass"
+completed
+next
+blockers
 ```
 
-sin estructura.
+### Scope evolution
 
-Modelo mínimo:
+Implementado:
+
+```text
+refineChange
+spawnChange
+addDependency
+```
+
+`split` y `supersede` siguen siendo conceptos del modelo pero no se automatizan mientras no
+existan semantics explícitas de partial failure multi-record.
+
+### Evidence
+
+Completion durable usa Evidence estructurada:
 
 ```yaml
 method: test | build | lint | runtime | inspection | diff | external | other
@@ -180,87 +223,299 @@ covers: [A1]
 source: optional
 ```
 
-La observación la produce el host; SDD valida estructura y relación con acceptance.
-
-## Scope evolution
-
-Primera implementación productiva debe soportar:
+Reglas importantes:
 
 ```text
+missing acceptance coverage -> reject
+unknown acceptance coverage -> reject
+result=fail                  -> no soporta completion
+```
+
+La observación real proviene del host; SDD valida estructura y relación con acceptance.
+
+## Application API
+
+Queries:
+
+```text
+getChange
+listOpenChanges
+getDecision
+getEvidence
+searchKnowledge
+```
+
+Commands:
+
+```text
+openChange
+createReceipt
 refineChange
+setFrontier
 spawnChange
 addDependency
+closeChange
+
+recordDecision
+recordEvidence
+promoteKnowledge
 ```
 
-Split/supersede siguen en el Domain Model pero no se automatizan hasta tener semantics seguras
-de partial failure multi-record.
-
-## Exposure
-
-Primer transport objetivo para agentes:
+No existe una primitive pública de dominio equivalente a:
 
 ```text
-MCP
+putRecord(arbitraryJson)
+patchRecord(...)
+setLifecycle(...)
 ```
 
-porque los harnesses target ya consumen tools estructuradas.
+## Memory
 
-Library es la composición interna.
-
-CLI puede ser fallback/admin.
-
-REST no forma parte del mínimo y solo se agregará ante un consumidor real.
-
-## Código productivo esperado
-
-Block B separa responsabilidades:
+Contrato:
 
 ```text
-domain
-application
-ports
-Engram adapter
-MCP transport
-Codex host/bootstrap
-runtime projection
-tests
+put(record)
+get(ref)
+list(selector)
+search(text, filters) optional
 ```
 
-El spike monolítico `experiments/semantic-api/` **no se copia como producto**.
+Única autoridad durable:
 
-Se reutilizan sus invariantes y casos negativos; luego se elimina cuando la implementación
-productiva los superseda.
+```text
+Application API
+-> Memory Port
+-> Repository
+```
+
+No existe `.sdd/state.json` como segunda autoridad.
+
+## Engram
+
+`src/adapters/engram/` es ahora implementación productiva del Memory Port sobre la superficie
+HTTP pública de Engram 1.20.0.
+
+El repository encapsula:
+
+```text
+transport
+physical identity codec
+serialization
+deterministic exact recovery
+bounded list
+write reconciliation
+project isolation
+error normalization
+physical session plumbing
+```
+
+No lee SQLite privado ni modifica/forkea Engram.
+
+Las transformaciones físicas del backend no entran al Domain Model.
+
+## Concurrencia
+
+Soportado:
+
+```text
+multiple agents/worktrees sobre Changes independientes
+sequential handoff del mismo Change
+```
+
+No soportado:
+
+```text
+same-Change concurrent writers
+```
+
+No se agregan CAS, locks o LWW para simular una garantía que el producto no declara.
+
+## MCP
+
+Primer transport para agentes implementado en:
+
+```text
+src/transports/mcp/
+```
+
+Expone tools SDD tipadas para los casos de uso implementados y no expone primitives físicas
+de Engram.
+
+Ejemplos:
+
+```text
+sdd_change_open
+sdd_change_get
+sdd_change_frontier
+sdd_change_spawn
+sdd_change_close
+sdd_decision_record
+sdd_evidence_record
+sdd_knowledge_promote
+```
+
+Los contratos MCP se verifican también con cliente STDIO del SDK.
+
+## Codex host/bootstrap
+
+Implementado en:
+
+```text
+src/hosts/codex/
+src/project/
+src/runtime/
+src/cli/
+bin/
+```
+
+Un proyecto consumidor inicializado recibe únicamente el binding y wiring necesarios:
+
+```text
+.sdd/config.json
+AGENTS.md                 managed SDD block
+.codex/config.toml        managed SDD MCP block
+```
+
+No recibe:
+
+```text
+.sdd/state.json
+.sdd/runtime/
+.agents/skills/ SDD
+duplicate memory
+roadmap authority
+```
+
+Binding durable:
+
+```json
+{
+  "schema_version": 1,
+  "project_id": "stable-project-id",
+  "memory": {
+    "adapter": "engram"
+  }
+}
+```
+
+El host y detalles de máquina no forman parte de la identidad del proyecto.
+
+Variables de entorno relevantes:
+
+```text
+SDD_ENGRAM_CONTAINER
+ENGRAM_HTTP_TOKEN
+```
+
+## Runtime Projection
+
+Existe una sola fuente programática:
+
+```text
+src/runtime/projection.mjs
+```
+
+De ella se derivan:
+
+```text
+AGENTS.md managed block
+MCP server instructions
+```
+
+El runtime no promete capacidades que no existan en código.
+
+## Skills
+
+Primera Alpha:
+
+```text
+0 skills SDD obligatorias
+```
+
+Una skill solo se agrega con trigger y beneficio de progressive disclosure demostrables.
+
+## Tests ya ejercitados
+
+Durante Block B se implementaron suites para:
+
+```text
+Domain
+Application API
+Memory Port behavior
+Engram codec
+Engram repository
+Engram transport
+real Engram integration
+project binding
+runtime composition
+Codex bootstrap
+MCP tools
+real MCP STDIO client/server contract
+CLI/init
+```
+
+El usuario confirmó en su entorno que pasan:
+
+```text
+npm test
+npm run test:mcp
+npm run test:engram
+```
+
+Esto cierra implementación, pero **no sustituye Block C**, que verifica el producto completo
+desde el harness real y aplica el gate cualitativo/estructural pre-dogfood.
+
+## Fuentes activas
+
+```text
+docs/rebaseline-architecture.md  arquitectura cross-layer
+docs/change-model.md             Domain Model
+docs/memory-contract.md          contrato durable
+docs/semantic-api.md             Application API
+docs/dogfood-evidence.md         evidencia histórica útil
+
+src/**                           implementación productiva
+tests/**                         falsificación automatizada
+infra/engram/**                  infraestructura Engram local
+experiments/README.md            política para experimentos futuros
+```
+
+`experiments/semantic-api/` queda eliminado al cerrar Block B porque su evidencia ya fue
+absorbida por contratos y tests productivos.
 
 ## Active-tree hygiene
 
 Git es el archivo histórico.
 
-Cuando una implementación/experimento queda supersedido:
+Cuando un experimento queda supersedido:
 
 ```text
 extraer evidencia útil
--> actualizar decisión
--> borrar artefacto muerto
+-> incorporar garantía/test/decisión
+-> eliminar experimento
 ```
 
-No carpetas `legacy/old/deprecated`.
+No se crean carpetas `legacy`, `old` o `deprecated`.
 
 ## Próximo bloque
 
-**Block B — Product implementation.**
+**Block C — Pre-dogfood Product Gate.**
 
-Debe implementar el diseño congelado sin abrir nuevas frontiers conceptuales:
+No introduce otra arquitectura.
+
+Debe atacar el producto implementado desde cuatro ángulos:
 
 ```text
-Domain
-Application API
-Memory Port
-Engram Repository
-MCP transport
-Codex binding
-Runtime Projection
-tests
+1. structural/static architecture audit
+2. real Codex + MCP discovery/invocation
+3. end-to-end conformance scenarios
+4. quality gate
 ```
 
-Después viene un único Block C de gate integral y, recién entonces, una auditoría independiente
-en chat nuevo antes de dogfood.
+Después:
+
+```text
+fresh-chat independent audit
+-> GO / NO-GO
+-> DOGFOOD
+```
