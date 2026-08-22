@@ -18,13 +18,14 @@ Application API contract            DONE
 Architecture / contract freeze      DONE
 Product implementation              DONE
 
-Pre-dogfood product gate            NEXT
-Fresh independent audit             PENDING
+Pre-dogfood product gate            DONE
+Fresh independent audit             NEXT
 DOGFOOD                             PENDING
 ```
 
-La implementación actual es una **candidata de Alpha reconstruida**, todavía no declarada apta
-para dogfood hasta superar Block C.
+La implementación actual es una **candidata de Alpha reconstruida** que superó Block C.
+Todavía no se declara apta para dogfood hasta obtener un GO en el fresh independent audit.
+La evidencia del gate está en `docs/pre-dogfood-gate.md`.
 
 `0.2.0-alpha.1` permanece invalidada como baseline. Git conserva su historia y
 `docs/dogfood-evidence.md` conserva la evidencia empírica útil.
@@ -499,23 +500,19 @@ No se crean carpetas `legacy`, `old` o `deprecated`.
 
 ## Próximo bloque
 
-**Block C — Pre-dogfood Product Gate.**
+**Fresh independent audit.**
 
-No introduce otra arquitectura.
-
-Debe atacar el producto implementado desde cuatro ángulos:
+Block C está cerrado con PASS y su evidencia está en:
 
 ```text
-1. structural/static architecture audit
-2. real Codex + MCP discovery/invocation
-3. end-to-end conformance scenarios
-4. quality gate
+docs/pre-dogfood-gate.md
 ```
 
-Después:
+El auditor debe revisar el active tree y los contratos de forma independiente, usando la
+evidencia del gate como input pero sin asumir sus conclusiones.
 
 ```text
 fresh-chat independent audit
 -> GO / NO-GO
--> DOGFOOD
+-> DOGFOOD solo con GO
 ```
