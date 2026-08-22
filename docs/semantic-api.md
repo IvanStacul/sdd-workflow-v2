@@ -194,7 +194,9 @@ No retry infinito; implementación define un bound pequeño y falla explícitame
 
 ## 8. Error model
 
-Public codes:
+### Application semantic errors
+
+La taxonomía pública de **Application API** es exactamente:
 
 ```text
 not_found
@@ -209,18 +211,33 @@ memory_unsupported
 memory_error
 ```
 
-No filtrar:
+Estos códigos son semántica SDD transport-independent. Library, MCP y cualquier transport futuro
+pueden mapearlos a su propio envelope, pero no redefinir su significado.
+
+La traducción desde Memory hacia Application debe normalizar el fallo. No puede promover
+automáticamente `message` o `details` originados en el backend a semántica pública.
+
+`details` públicos solo contienen información definida por SDD y útil para que el caller actúe
+sobre el contrato semántico. Diagnóstico físico o de transporte permanece en `cause` interno.
+
+No filtrar como `message`/`details` públicos, entre otros:
 
 ```text
-curl exit code
-Engram HTTP path
+curl/docker exit code
+stderr de transport
+Engram HTTP status/path
+Engram session_id
+physical project/topic identifiers
 SQLite id
 topic_key
+backend stack/message arbitrario
 ```
 
-como semántica pública.
+Diagnostic `cause` puede conservar esa información internamente para observabilidad y debugging.
 
-Diagnostic cause puede conservarlos internamente.
+Un transport puede necesitar un fallback defensivo para una excepción inesperada que no sea un
+`SddError`. Ese fallback no amplía esta taxonomía de Application ni puede convertir diagnóstico
+backend en semántica SDD. El contrato MCP concreto se define en §30.
 
 ---
 
@@ -415,7 +432,7 @@ Semántica:
 omitted -> preserve
 value   -> replace only that validated section
 null    -> remove that optional section
-[]      -> normalize to absent
+[]      -> normalize absent
 ```
 
 No reemplaza contract completo.
@@ -717,6 +734,21 @@ validate transport schema
 ```
 
 No replica lógica de dominio.
+
+Si Application devuelve un `SddError`, MCP expone su código semántico y únicamente los
+`details` públicos definidos por Application.
+
+Si el transport captura una excepción inesperada que **no** es un `SddError`, puede responder:
+
+```text
+internal_error
+```
+
+con mensaje canónico y sin copiar `message`, `stack`, `cause` o `details` del error original.
+
+`internal_error` es un fallback defensivo **propio del transport MCP**. No pertenece a la
+taxonomía semántica de Application de §8 y no debe ser producido por Application para disfrazar
+un fallo de Memory u otro error semántico conocido.
 
 La lista de tools refleja commands/queries realmente implementados.
 

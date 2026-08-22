@@ -496,7 +496,7 @@ No es reserva atómica.
 
 Decision/Evidence independientes no aceptan arbitrary update.
 
-### Error taxonomy
+### Application semantic error taxonomy
 
 ```text
 not_found
@@ -508,6 +508,21 @@ memory_unavailable
 memory_ambiguous
 memory_unsupported
 memory_error
+```
+
+Esta taxonomía pertenece a Application y es transport-independent. La traducción desde Memory
+normaliza errores hacia estos códigos sin promover diagnóstico físico/backend a `message` o
+`details` públicos; ese diagnóstico puede sobrevivir únicamente como `cause` interno.
+
+Un transport puede definir un fallback defensivo para excepciones inesperadas fuera de este
+contrato. En MCP, `internal_error` cumple ese rol: no es un décimo error semántico de Application
+y no puede exponer el error original.
+
+Contrato exacto de esta frontera:
+
+```text
+docs/semantic-api.md#8-error-model
+docs/semantic-api.md#30-mcp-transport
 ```
 
 ---
