@@ -278,6 +278,17 @@ No fuzzy selection.
 
 ## 12. `listOpenChanges(options?)`
 
+Primera Alpha:
+
+```yaml
+limit: optional integer 1..20
+cursor: optional
+```
+
+El límite `20` es parte del contrato público actual. Inputs fuera de rango se rechazan
+como `invalid_input` antes de invocar Memory; el caller no debe descubrir el límite mediante
+un error del backend.
+
 ```text
 memory.list({project, kind=change, bounded options})
 -> validate items

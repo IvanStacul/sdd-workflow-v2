@@ -285,3 +285,17 @@ test('unexpected failures are normalized to internal_error', async () => {
   });
   assert.doesNotMatch(result.content[0].text, /transport internals/);
 });
+
+test('MCP list schema exposes the first-Alpha 1..20 bound', () => {
+  const server = new CaptureServer();
+  const { api } = fakeApi();
+  registerSddTools(server, api);
+
+  const schema = server.tools.get('sdd_change_list').config.inputSchema;
+
+  assert.equal(schema.safeParse({}).success, true);
+  assert.equal(schema.safeParse({ limit: 1 }).success, true);
+  assert.equal(schema.safeParse({ limit: 20 }).success, true);
+  assert.equal(schema.safeParse({ limit: 21 }).success, false);
+  assert.equal(schema.safeParse({ limit: 100 }).success, false);
+});

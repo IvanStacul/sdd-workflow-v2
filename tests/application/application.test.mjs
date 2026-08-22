@@ -902,3 +902,15 @@ test('Application API exposes no arbitrary record mutation primitive', async () 
   assert.equal(api.setLifecycle, undefined);
   assert.equal(api.updateChange, undefined);
 });
+
+test('listOpenChanges rejects limits outside the first-Alpha public bound before Memory', async () => {
+  const { api, memory } = fixture();
+  const listCallsBefore = memory.listCount;
+
+  await expectCode(
+    api.listOpenChanges({ limit: 100 }),
+    'invalid_input',
+  );
+
+  assert.equal(memory.listCount, listCallsBefore);
+});

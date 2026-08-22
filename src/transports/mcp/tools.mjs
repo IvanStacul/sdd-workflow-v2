@@ -1,6 +1,9 @@
 import { z } from 'zod';
 
 import { SddError } from '../../domain/errors.mjs';
+import {
+  MAX_OPEN_CHANGE_LIST_LIMIT,
+} from '../../application/change-service.mjs';
 
 const stringList = z.array(z.string().min(1)).optional();
 
@@ -188,9 +191,9 @@ export function registerSddTools(server, api) {
     {
       title: 'List open SDD Changes',
       description:
-        'List open Changes for the bound project. Preserve complete=false as non-exhaustive.',
+        'List open Changes for the bound project (limit 1-20). Preserve complete=false as non-exhaustive.',
       inputSchema: z.object({
-        limit: z.number().int().positive().optional(),
+        limit: z.number().int().min(1).max(MAX_OPEN_CHANGE_LIST_LIMIT).optional(),
         cursor: z.string().min(1).optional(),
       }).strict(),
       annotations: READ_ONLY,

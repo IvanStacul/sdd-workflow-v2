@@ -34,6 +34,8 @@ import {
   translateMemoryError,
 } from './shared.mjs';
 
+export const MAX_OPEN_CHANGE_LIST_LIMIT = 20;
+
 const LIST_OPTIONS = new Set(['limit', 'cursor']);
 
 export function createChangeService(context) {
@@ -65,10 +67,18 @@ export function createChangeService(context) {
     };
 
     if (options.limit !== undefined) {
-      if (!Number.isInteger(options.limit) || options.limit < 1) {
+      if (
+        !Number.isInteger(options.limit)
+        || options.limit < 1
+        || options.limit > MAX_OPEN_CHANGE_LIST_LIMIT
+      ) {
         throw sddError(
           'invalid_input',
-          'listOpenChanges limit must be a positive integer',
+          `listOpenChanges limit must be between 1 and ${MAX_OPEN_CHANGE_LIST_LIMIT}`,
+          {
+            min: 1,
+            max: MAX_OPEN_CHANGE_LIST_LIMIT,
+          },
         );
       }
       selector.limit = options.limit;
