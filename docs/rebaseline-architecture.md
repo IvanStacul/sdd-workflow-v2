@@ -3,7 +3,8 @@
 ## 1. Estado
 
 **Estado:** arquitectura congelada; implementación de producto completada; Block C pre-dogfood
-cerrado con PASS; fresh independent audit es el siguiente y único gate antes de dogfood.
+cerrado con PASS; fresh independent audit cerrado con GO; dogfood controlado es el siguiente
+bloque empírico.
 
 Este documento es la autoridad **cross-layer** de SDD V2. Los contratos especializados:
 
@@ -838,8 +839,8 @@ duplicated source code
 
 `init` preflights ownership/config conflicts antes de mutar estado semántico del proyecto.
 
-La distribución aún conserva package version de desarrollo hasta obtener un GO en la auditoría
-independiente.
+La distribución conserva package version de desarrollo durante dogfood. El GO de la auditoría
+independiente autoriza dogfood controlado; no autoriza por sí solo un release.
 
 ---
 
@@ -1111,12 +1112,27 @@ DONE
 
 No se crean más frontiers conceptuales salvo falsificación de una garantía central.
 
-Siguiente gate:
+### Fresh independent audit
 
 ```text
-fresh-chat independent audit
--> GO / NO-GO
--> DOGFOOD solo con GO
+DONE / GO
+```
+
+Evidencia:
+
+```text
+docs/independent-audit.md
+```
+
+No quedan BLOCKER/MAJOR pre-dogfood pendientes. El finding MINOR de atomicidad de `init`
+permanece como riesgo residual a medir/corregir según evidencia y no bloquea dogfood.
+
+Siguiente bloque:
+
+```text
+DOGFOOD controlado
+-> evidencia empírica
+-> cambios solo cuando la evidencia los justifique
 ```
 
 ---
@@ -1133,8 +1149,8 @@ Architecture / contract freeze      DONE
 Product implementation              DONE
 
 Pre-dogfood product gate            DONE
-Fresh independent audit             NEXT
-DOGFOOD                             PENDING
+Fresh independent audit             DONE / GO
+DOGFOOD                             NEXT
 ```
 
 ---

@@ -19,13 +19,20 @@ Architecture / contract freeze      DONE
 Product implementation              DONE
 
 Pre-dogfood product gate            DONE
-Fresh independent audit             NEXT
-DOGFOOD                             PENDING
+Fresh independent audit             DONE / GO
+DOGFOOD                             NEXT
 ```
 
-La implementación actual es una **candidata de Alpha reconstruida** que superó Block C.
-Todavía no se declara apta para dogfood hasta obtener un GO en el fresh independent audit.
-La evidencia del gate está en `docs/pre-dogfood-gate.md`.
+La implementación actual es una **candidata de Alpha reconstruida** que superó Block C y el
+fresh independent audit con GO para dogfood controlado. El GO autoriza obtener evidencia
+empírica real; no equivale a declarar el producto listo para release.
+
+Evidencia:
+
+```text
+docs/pre-dogfood-gate.md
+docs/independent-audit.md
+```
 
 `0.2.0-alpha.1` permanece invalidada como baseline. Git conserva su historia y
 `docs/dogfood-evidence.md` conserva la evidencia empírica útil.
@@ -473,6 +480,7 @@ docs/rebaseline-architecture.md  arquitectura cross-layer
 docs/change-model.md             Domain Model
 docs/memory-contract.md          contrato durable
 docs/semantic-api.md             Application API
+docs/independent-audit.md         fresh independent audit / GO
 docs/dogfood-evidence.md         evidencia histórica útil
 
 src/**                           implementación productiva
@@ -500,19 +508,22 @@ No se crean carpetas `legacy`, `old` o `deprecated`.
 
 ## Próximo bloque
 
-**Fresh independent audit.**
+**Dogfood controlado.**
 
-Block C está cerrado con PASS y su evidencia está en:
+Block C y el fresh independent audit están cerrados:
 
 ```text
-docs/pre-dogfood-gate.md
+docs/pre-dogfood-gate.md    PASS
+docs/independent-audit.md   GO
 ```
 
-El auditor debe revisar el active tree y los contratos de forma independiente, usando la
-evidencia del gate como input pero sin asumir sus conclusiones.
+La siguiente etapa debe usar SDD V2 sobre trabajo real para obtener evidencia empírica sobre
+overhead, continuidad, recuperación, utilidad semántica y sensibilidad al modelo. No se abre
+otra iteración arquitectónica preventiva antes de observar esa evidencia.
 
 ```text
-fresh-chat independent audit
--> GO / NO-GO
--> DOGFOOD solo con GO
+DOGFOOD
+-> observar
+-> registrar evidencia factual
+-> cambiar producto solo cuando la evidencia lo justifique
 ```
