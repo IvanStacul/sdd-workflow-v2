@@ -162,10 +162,6 @@ export function decodePersistedRecord(
 }
 
 export function translateMemoryError(error) {
-  if (error instanceof SddError) {
-    return error;
-  }
-
   if (!isMemoryPortError(error)) {
     return sddError(
       'memory_error',
@@ -179,29 +175,29 @@ export function translateMemoryError(error) {
     case 'not_found':
       return sddError(
         'not_found',
-        error.message || 'SDD record not found',
-        error.details ?? {},
+        'SDD record not found',
+        {},
         error,
       );
     case 'ambiguous':
       return sddError(
         'memory_ambiguous',
         'Durable memory returned an ambiguous result',
-        error.details ?? {},
+        {},
         error,
       );
     case 'unavailable':
       return sddError(
         'memory_unavailable',
         'Durable memory is unavailable',
-        error.details ?? {},
+        {},
         error,
       );
     case 'unsupported':
       return sddError(
         'memory_unsupported',
         'Durable memory does not support this capability',
-        error.details ?? {},
+        {},
         error,
       );
     case 'invalid':
@@ -210,10 +206,7 @@ export function translateMemoryError(error) {
       return sddError(
         'memory_error',
         'Durable memory failed',
-        {
-          ...(error.details ?? {}),
-          memory_code: error.code,
-        },
+        {},
         error,
       );
   }
