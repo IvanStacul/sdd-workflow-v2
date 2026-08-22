@@ -3,7 +3,7 @@
 ## 1. Estado
 
 **Estado:** arquitectura congelada; implementación de producto completada; Block C pre-dogfood
-es el siguiente y único gate interno.
+cerrado con PASS; fresh independent audit es el siguiente y único gate antes de dogfood.
 
 Este documento es la autoridad **cross-layer** de SDD V2. Los contratos especializados:
 
@@ -699,8 +699,9 @@ Engram mapping
 Change lifecycle rules
 ```
 
-El descubrimiento real por Codex pertenece al Block C, porque existencia del archivo/config no
-demuestra que el harness haya cargado y usado las tools.
+El descubrimiento real por Codex fue verificado durante Block C, porque existencia del archivo/config
+por sí sola no demuestra que el harness haya cargado y usado las tools. La evidencia de esa
+verificación está consolidada en `docs/pre-dogfood-gate.md`.
 
 ---
 
@@ -822,7 +823,7 @@ duplicated source code
 
 `init` preflights ownership/config conflicts antes de mutar estado semántico del proyecto.
 
-La distribución aún conserva package version de desarrollo hasta superar Block C y auditoría
+La distribución aún conserva package version de desarrollo hasta obtener un GO en la auditoría
 independiente.
 
 ---
@@ -935,7 +936,7 @@ npm run test:engram       PASS
 
 Esto demuestra Block B implementado y testable.
 
-No demuestra todavía:
+Por sí solo, Block B no demostraba:
 
 ```text
 real Codex tool discovery
@@ -945,11 +946,18 @@ full end-to-end conformance from harness
 quality score gate
 ```
 
-Esos son Block C.
+Esas propiedades fueron ejercitadas posteriormente durante Block C. La evidencia factual y
+el cierre del gate están en:
+
+```text
+docs/pre-dogfood-gate.md
+```
 
 ---
 
 ## 24. Gate pre-dogfood — Block C
+
+**Estado:** DONE / PASS. Evidencia: `docs/pre-dogfood-gate.md`.
 
 Block C no agrega features salvo que una prueba falsifique una garantía.
 
@@ -1083,17 +1091,17 @@ tests
 ### Block C — Product gate
 
 ```text
-NEXT
+DONE
 ```
 
 No se crean más frontiers conceptuales salvo falsificación de una garantía central.
 
-Después:
+Siguiente gate:
 
 ```text
 fresh-chat independent audit
 -> GO / NO-GO
--> DOGFOOD
+-> DOGFOOD solo con GO
 ```
 
 ---
@@ -1109,8 +1117,8 @@ Application API contract            DONE
 Architecture / contract freeze      DONE
 Product implementation              DONE
 
-Pre-dogfood product gate            NEXT
-Fresh independent audit             PENDING
+Pre-dogfood product gate            DONE
+Fresh independent audit             NEXT
 DOGFOOD                             PENDING
 ```
 
